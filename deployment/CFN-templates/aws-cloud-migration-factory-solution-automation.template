@@ -1,0 +1,2715 @@
+#  Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#  SPDX-License-Identifier: Apache-2.0
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "(%%SOLUTION_ID%%-automation) - The AWS CloudFormation template for deployment of the AWS Cloud Migration Factory Solution. Version:%%VERSION%%"
+
+Parameters:
+  Application: 
+    Type: String
+
+  Environment: 
+    Type: String
+
+#  CloudfrontOriginAccessIdentity:
+#    Type: String
+
+  ToolsAPI: 
+    Type: String
+
+  LoginAPI: 
+    Type: String
+
+  Region:
+    Type: String
+
+  UserAPI:
+    Type: String
+
+  VPCEID:
+    Type: String
+
+  KeyPrefix:
+    Type: String
+
+  CognitoAppClientId:
+    Type: String
+
+  CognitoUserPoolArn:
+    Type: String
+
+  CognitoUserPoolId:
+    Type: String
+
+  CognitoAdminGroup:
+    Type: String
+
+  CodeBucket:
+    Type: String
+
+  APIGatewayLogGroup:
+    Type: String
+
+  AccessLoggingBucket:
+    Type: String
+
+  RoleDynamoDBTableArn:
+    Type: String
+
+  PolicyDynamoDBTableArn:
+    Type: String
+
+  LambdaLayerStdPythonLibs:
+    Type: String
+
+  LambdaLayerMFPolicyLib:
+    Type: String
+
+  LambdaLayerMFItemsLib:
+    Type: String
+
+  LambdaLayerMFUtilsLib:
+    Type: String
+
+  CORS:
+    Type: String
+
+  LambdaRuntimePython:
+    Type: String
+    Default: python3.11
+
+  IsDeploymentPrivate:
+    Type: String
+    Description: Is this a private deployment?
+    Default: false
+    AllowedValues: [ true, false ]
+
+  PipelineTaskExecutionOutputLambdaARN:
+    Type: String
+
+Mappings:
+  Solution:
+    Data:
+      SolutionID: '%%SOLUTION_ID%%'
+      SolutionVersion: '%%VERSION%%'
+
+Conditions:
+  DeploymentPublic: !Equals [!Ref IsDeploymentPrivate, false]
+
+Resources:
+  #S3 Bucket to store remote scripts
+  SSMBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${Application}-${Environment}-${AWS::AccountId}-ssm-scripts
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        -
+          Key: application
+          Value: !Ref Application
+        -
+          Key: environment
+          Value: !Ref Environment
+      LoggingConfiguration:
+        DestinationBucketName: !Ref AccessLoggingBucket
+        LogFilePrefix: ssm-scripts
+      BucketEncryption:
+         ServerSideEncryptionConfiguration:
+            - ServerSideEncryptionByDefault:
+                SSEAlgorithm: aws:kms
+
+  #S3 Bucket to store post cutover validation reports
+  PostMigrationReportsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${Application}-${Environment}-${AWS::AccountId}-ssm-outputs
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: TRUE
+        BlockPublicPolicy: TRUE
+        IgnorePublicAcls: TRUE
+        RestrictPublicBuckets: TRUE
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+      Tags:
+        -
+          Key: application
+          Value: !Ref Application
+        -
+          Key: environment
+          Value: !Ref Environment
+      LoggingConfiguration:
+        DestinationBucketName: !Ref AccessLoggingBucket
+        LogFilePrefix: reports
+      VersioningConfiguration:
+        Status: 'Enabled'
+
+  # DynamoDB - connectionIds
+  SSMConnectionIdDynamoDBTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        -
+          AttributeName: "connectionId"
+          AttributeType: "S"
+      KeySchema:
+        -
+          AttributeName: "connectionId"
+          KeyType: "HASH"
+      BillingMode: "PAY_PER_REQUEST"
+      TableName: !Sub ${Application}-${Environment}-ssm-connectionIds
+      PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: true
+      Tags:
+        -
+          Key: application
+          Value: !Ref Application
+        -
+          Key: environment
+          Value: !Ref Environment
+        -
+          Key: Name
+          Value: !Sub ${Application}-${Environment}-ssm-connectionIds
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Replacement of this resource is not required, and explicit name of this resource is easy for user to identify the table"
+          - id: W74
+            reason: "Default encryption is enabled with no additional charge"
+
+  # DynamoDB - SSMJobs
+  SSMJobsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        -
+          AttributeName: "SSMId"
+          AttributeType: "S"
+      KeySchema:
+        -
+          AttributeName: "SSMId"
+          KeyType: "HASH"
+      BillingMode: "PAY_PER_REQUEST"
+      TableName: !Sub ${Application}-${Environment}-ssm-jobs
+      PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: true
+      Tags:
+        -
+          Key: application
+          Value: !Ref Application
+        -
+          Key: environment
+          Value: !Ref Environment
+        -
+          Key: Name
+          Value: !Sub ${Application}-${Environment}-ssm-jobs
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Replacement of this resource is not required, and explicit name of this resource is easy for user to identify the table"
+          - id: W74
+            reason: "Default encryption is enabled with no additional charge"
+
+  # DynamoDB - SSMScripts
+  SSMScriptsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: "package_uuid"
+          AttributeType: "S"
+        - AttributeName: "version"
+          AttributeType: "N"
+      KeySchema:
+        - AttributeName: "package_uuid"
+          KeyType: "HASH"
+        - AttributeName: "version"
+          KeyType: "RANGE"
+      BillingMode: "PAY_PER_REQUEST"
+      TableName: !Sub ${Application}-${Environment}-ssm-scripts
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      GlobalSecondaryIndexes:
+        - IndexName: "version-index"
+          KeySchema:
+            - AttributeName: "version"
+              KeyType: "HASH"
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: application
+          Value: !Ref Application
+        - Key: environment
+          Value: !Ref Environment
+        - Key: Name
+          Value: !Sub ${Application}-${Environment}-ssm-scripts
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Replacement of this resource is not required, and explicit name of this resource is easy for user to identify the table"
+          - id: W74
+            reason: "Default encryption is enabled with no additional charge"
+
+  # DynamoDB - Pipeline Template Tasks
+  PipelineTemplateTasksTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: "pipeline_template_task_id"
+          AttributeType: "S"
+        - AttributeName: "pipeline_template_id"
+          AttributeType: "S"
+        - AttributeName: "task_id"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "pipeline_template_task_id"
+          KeyType: "HASH"
+      BillingMode: "PAY_PER_REQUEST"
+      TableName: !Sub ${Application}-${Environment}-pipeline_template_tasks
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: application
+          Value: !Ref Application
+        - Key: environment
+          Value: !Ref Environment
+        - Key: Name
+          Value: !Sub ${Application}-${Environment}-pipeline_template_tasks
+      GlobalSecondaryIndexes:
+        - IndexName: "pipeline_template_id-index"
+          KeySchema:
+            - AttributeName: "pipeline_template_id"
+              KeyType: "HASH"
+            - AttributeName: "task_id"
+              KeyType: "RANGE"
+          Projection:
+            ProjectionType: ALL
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Replacement of this resource is not required, and explicit name of this resource is easy for user to identify the table"
+          - id: W74
+            reason: "Default encryption is enabled with no additional charge"
+
+  # DynamoDB - Pipeline Templates
+  PipelineTemplatesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: "pipeline_template_id"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "pipeline_template_id"
+          KeyType: "HASH"
+      BillingMode: "PAY_PER_REQUEST"
+      TableName: !Sub ${Application}-${Environment}-pipeline_templates
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: application
+          Value: !Ref Application
+        - Key: environment
+          Value: !Ref Environment
+        - Key: Name
+          Value: !Sub ${Application}-${Environment}-pipeline_templates
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Replacement of this resource is not required, and explicit name of this resource is easy for user to identify the table"
+          - id: W74
+            reason: "Default encryption is enabled with no additional charge"
+
+  # DynamoDB - Pipelines
+  PipelinesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      AttributeDefinitions:
+        - AttributeName: "pipeline_id"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "pipeline_id"
+          KeyType: "HASH"
+      BillingMode: "PAY_PER_REQUEST"
+      TableName: !Sub ${Application}-${Environment}-pipelines
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: application
+          Value: !Ref Application
+        - Key: environment
+          Value: !Ref Environment
+        - Key: Name
+          Value: !Sub ${Application}-${Environment}-pipelines
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Replacement of this resource is not required, and explicit name of this resource is easy for user to identify the table"
+          - id: W74
+            reason: "Default encryption is enabled with no additional charge"
+
+  # DynamoDB - Task Executions
+  TaskExecutionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      AttributeDefinitions:
+        - AttributeName: "task_execution_id"
+          AttributeType: "S"
+        - AttributeName: "pipeline_id"
+          AttributeType: "S"
+        - AttributeName: "task_id"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "task_execution_id"
+          KeyType: "HASH"
+      GlobalSecondaryIndexes:
+        - IndexName: "pipeline_id-index"
+          KeySchema:
+            - AttributeName: "pipeline_id"
+              KeyType: "HASH"
+            - AttributeName: "task_id"
+              KeyType: "RANGE"
+          Projection:
+            ProjectionType: ALL
+      BillingMode: "PAY_PER_REQUEST"
+      TableName: !Sub ${Application}-${Environment}-task_executions
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: application
+          Value: !Ref Application
+        - Key: environment
+          Value: !Ref Environment
+        - Key: Name
+          Value: !Sub ${Application}-${Environment}-task_executions
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Replacement of this resource is not required, and explicit name of this resource is easy for user to identify the table"
+          - id: W74
+            reason: "Default encryption is enabled with no additional charge"
+
+  # API Gateway Websocket
+  SSMSocketAPIStage:
+    Condition: DeploymentPublic
+    Type: 'AWS::ApiGatewayV2::Stage'
+    Properties:
+      StageName: prod
+      Description: Production Stage
+      DeploymentId: !Ref SSMSocketAPIDeploy
+      ApiId: !Ref SSMSocketAPI
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W46
+            reason: "Access Logging already enabled on resource"
+
+  SSMSocketAPIDeploy:
+    Condition: DeploymentPublic
+    Type: 'AWS::ApiGatewayV2::Deployment'
+    DependsOn:
+      - ConnectRoute
+      - DisconnectRoute
+      - DefaultRoute
+    Properties:
+      ApiId: !Ref SSMSocketAPI
+
+  SSMSocketAPI:
+    Condition: DeploymentPublic
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub ${Application}-${Environment}-ssm-socket-api
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: "$request.body.message"
+
+  ConnectRoute:
+    Condition: DeploymentPublic
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SSMSocketAPI
+      RouteKey: $connect
+      AuthorizationType: NONE
+      RouteResponseSelectionExpression: $default
+      OperationName: ConnectRoute
+      Target: !Join
+        - '/'
+        - - 'integrations'
+          - !Ref ConnectInteg
+  ConnectInteg:
+    Condition: DeploymentPublic
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref SSMSocketAPI
+      Description: Connect Integration
+      IntegrationType: AWS_PROXY
+      IntegrationUri:
+        Fn::Sub:
+            arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunctionSSMSocket.Arn}/invocations
+  ConnectRouteResponse:
+    Condition: DeploymentPublic
+    Type: 'AWS::ApiGatewayV2::RouteResponse'
+    Properties:
+      RouteId: !Ref ConnectRoute
+      ApiId: !Ref SSMSocketAPI
+      RouteResponseKey: $default
+
+  DisconnectRoute:
+    Condition: DeploymentPublic
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SSMSocketAPI
+      RouteKey: $disconnect
+      AuthorizationType: NONE
+      RouteResponseSelectionExpression: $default
+      OperationName: DisconnectRoute
+      Target: !Join
+        - '/'
+        - - 'integrations'
+          - !Ref DisconnectInteg
+  DisconnectInteg:
+    Condition: DeploymentPublic
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref SSMSocketAPI
+      Description: Disconnect Integration
+      IntegrationType: AWS_PROXY
+      IntegrationUri:
+        Fn::Sub:
+            arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunctionSSMSocket.Arn}/invocations
+  DisconnectRouteResponse:
+    Condition: DeploymentPublic
+    Type: 'AWS::ApiGatewayV2::RouteResponse'
+    Properties:
+      RouteId: !Ref DisconnectRoute
+      ApiId: !Ref SSMSocketAPI
+      RouteResponseKey: $default
+
+  DefaultRoute:
+    Condition: DeploymentPublic
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref SSMSocketAPI
+      RouteKey: $default
+      AuthorizationType: NONE
+      RouteResponseSelectionExpression: $default
+      OperationName: DefaultRoute
+      Target: !Join
+        - '/'
+        - - 'integrations'
+          - !Ref DefaultInteg
+  DefaultInteg:
+    Condition: DeploymentPublic
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref SSMSocketAPI
+      Description: Default Integration
+      IntegrationType: AWS_PROXY
+      IntegrationUri:
+        Fn::Sub:
+            arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunctionSSMSocket.Arn}/invocations
+  DefaultRouteResponse:
+    Condition: DeploymentPublic
+    Type: 'AWS::ApiGatewayV2::RouteResponse'
+    Properties:
+      RouteId: !Ref DefaultRoute
+      ApiId: !Ref SSMSocketAPI
+      RouteResponseKey: $default
+
+  SSMLambdaRole:
+    DependsOn: SSMLogGroup
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub ${Application}-${Environment}-ssm-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        -
+          PolicyName: LambdaRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                  - 'lambda:InvokeAsync'
+                Resource: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${LambdaFunctionSSMJobs}"
+              -
+                Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                  - 'lambda:InvokeAsync'
+                Resource: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${LambdaFunctionSSMScripts}"
+              - Effect: Allow
+                Action:
+                  - 'ssm:DescribeInstanceInformation'
+                  - 'ssm:StartAutomationExecution'
+                  - 'ssm:ListTagsForResource'
+                Resource:
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:*'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/*:*'
+              -
+                Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:Scan'
+                  - 'dynamodb:GetItem'
+                  - 'dynamodb:Query'
+                Resource:
+                  - !Join ['', [!Ref RoleDynamoDBTableArn, '*']]
+                  - !Join ['', [!Ref PolicyDynamoDBTableArn, '*']]
+              - Effect: Allow
+                Action:
+                  - 'ec2:DescribeTags'
+                Resource: '*'
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "The resources ARN is unknown, because it is based on user's input"
+          - id: W28
+            reason: "Replacement of this resource is not required, and explicit name of this resource is easy for user to identify"
+
+
+  SSMJobsLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub ${Application}-${Environment}-ssm-jobs-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        -
+          PolicyName: LambdaRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - 'dynamodb:DeleteItem'
+                  - 'dynamodb:GetItem'
+                  - 'dynamodb:PutItem'
+                  - 'dynamodb:Query'
+                  - 'dynamodb:Scan'
+                  - 'dynamodb:UpdateItem'
+                  - 'dynamodb:DescribeTable'
+                Resource:
+                  - !Join ['', [!GetAtt SSMJobsTable.Arn, '*']]
+              -
+                Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Replacement of this resource is not required, and explicit name of this resource is easy for user to identify"
+
+  SSMLoadScriptsLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub ${Application}-${Environment}-ssm-load-scripts-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        -
+          PolicyName: LambdaRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                Resource:
+                  - !Sub
+                    - "arn:aws:s3:::${code}/*"
+                    - { code: !Ref CodeBucket }
+              -
+                Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+              - Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                Resource: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${LambdaFunctionSSMScripts}"
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:GetItem'
+                  - 'dynamodb:PutItem'
+                  - 'dynamodb:Query'
+                  - 'dynamodb:Scan'
+                  - 'dynamodb:DescribeTable'
+                Resource:
+                  - !Join ['', [!GetAtt SSMScriptsTable.Arn, '*']]
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Replacement of this resource is not required, and explicit name of this resource is easy for user to identify"
+
+  SSMScriptsLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub ${Application}-${Environment}-ssm-scripts-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        -
+          PolicyName: LambdaRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - 's3:PutObject'
+                  - 's3:GetObject'
+                  - 's3:GetObjectVersion'
+                  - 's3:ListBucket'
+                  - 's3:DeleteObject'
+                Resource:
+                  - !Sub "${SSMBucket.Arn}"
+                  - !Sub "${SSMBucket.Arn}/*"
+              -
+                Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:UpdateItem'
+                  - 'dynamodb:PutItem'
+                  - 'dynamodb:Scan'
+                  - 'dynamodb:GetItem'
+                  - 'dynamodb:Query'
+                  - 'dynamodb:DeleteItem'
+                  - 'dynamodb:BatchWriteItem'
+                Resource:
+                  - !Join ['', [!GetAtt SSMScriptsTable.Arn, '*']]
+                  - !Join ['', [!Ref RoleDynamoDBTableArn, '*']]
+                  - !Join ['', [!Ref PolicyDynamoDBTableArn, '*']]
+              -
+                Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                  - 'lambda:InvokeAsync'
+                Resource:
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${Application}-${Environment}-schema"
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Replacement of this resource is not required, and explicit name of this resource is easy for user to identify"
+
+  PipelineTemplateTasksLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub ${Application}-${Environment}-pipeline-template-tasks-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        -
+          PolicyName: LambdaRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:UpdateItem'
+                  - 'dynamodb:PutItem'
+                  - 'dynamodb:Scan'
+                  - 'dynamodb:GetItem'
+                  - 'dynamodb:Query'
+                  - 'dynamodb:DeleteItem'
+                  - 'dynamodb:BatchWriteItem'
+                Resource:
+                  - !Join ['', [!GetAtt PipelineTemplateTasksTable.Arn, '*']]
+                  - !Join ['', [!Ref RoleDynamoDBTableArn, '*']]
+                  - !Join ['', [!Ref PolicyDynamoDBTableArn, '*']]
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Replacement of this resource is not required, and explicit name of this resource is easy for user to identify"
+
+  PipelineTemplatesLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub ${Application}-${Environment}-pipeline-templates-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        -
+          PolicyName: LambdaRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:UpdateItem'
+                  - 'dynamodb:PutItem'
+                  - 'dynamodb:Scan'
+                  - 'dynamodb:GetItem'
+                  - 'dynamodb:Query'
+                  - 'dynamodb:DeleteItem'
+                  - 'dynamodb:BatchWriteItem'
+                Resource:
+                  - !Join ['', [!GetAtt PipelineTemplatesTable.Arn, '*']]
+                  - !Join ['', [!Ref RoleDynamoDBTableArn, '*']]
+                  - !Join ['', [!Ref PolicyDynamoDBTableArn, '*']]
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Replacement of this resource is not required, and explicit name of this resource is easy for user to identify"
+
+  PipelinesLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub ${Application}-${Environment}-pipelines-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        -
+          PolicyName: LambdaRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:UpdateItem'
+                  - 'dynamodb:PutItem'
+                  - 'dynamodb:Scan'
+                  - 'dynamodb:GetItem'
+                  - 'dynamodb:Query'
+                  - 'dynamodb:DeleteItem'
+                  - 'dynamodb:BatchWriteItem'
+                Resource:
+                  - !Join ['', [!GetAtt PipelinesTable.Arn, '*']]
+                  - !Join ['', [!Ref RoleDynamoDBTableArn, '*']]
+                  - !Join ['', [!Ref PolicyDynamoDBTableArn, '*']]
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Replacement of this resource is not required, and explicit name of this resource is easy for user to identify"
+
+  TaskExecutionsLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub ${Application}-${Environment}-task-executions-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        -
+          PolicyName: LambdaRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:UpdateItem'
+                  - 'dynamodb:PutItem'
+                  - 'dynamodb:Scan'
+                  - 'dynamodb:GetItem'
+                  - 'dynamodb:Query'
+                  - 'dynamodb:DeleteItem'
+                  - 'dynamodb:BatchWriteItem'
+                Resource:
+                  - !Join ['', [!GetAtt TaskExecutionsTable.Arn, '*']]
+                  - !Join ['', [!Ref RoleDynamoDBTableArn, '*']]
+                  - !Join ['', [!Ref PolicyDynamoDBTableArn, '*']]
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Replacement of this resource is not required, and explicit name of this resource is easy for user to identify"
+
+  SSMOutputLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub ${Application}-${Environment}-ssm-output-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        -
+          PolicyName: LambdaRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - 'dynamodb:DeleteItem'
+                  - 'dynamodb:GetItem'
+                  - 'dynamodb:PutItem'
+                  - 'dynamodb:Query'
+                  - 'dynamodb:Scan'
+                  - 'dynamodb:UpdateItem'
+                  - 'dynamodb:DescribeTable'
+                Resource:
+                  - !Join ['', [!GetAtt SSMJobsTable.Arn, '*']]
+                  - !Join ['', [!GetAtt TaskExecutionsTable.Arn, '*']]
+              -
+                Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+              -
+                Effect: Allow
+                Action:
+                  - events:PutEvents
+                Resource: !GetAtt MigrationFactoryEventBus.Arn
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Replacement of this resource is not required, and explicit name of this resource is easy for user to identify"
+
+  SSMSocketLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub ${Application}-${Environment}-ssm-socket-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        -
+          PolicyName: LambdaRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - 'dynamodb:DeleteItem'
+                  - 'dynamodb:GetItem'
+                  - 'dynamodb:PutItem'
+                  - 'dynamodb:Query'
+                  - 'dynamodb:Scan'
+                  - 'dynamodb:UpdateItem'
+                  - 'dynamodb:DescribeTable'
+                Resource:
+                  - !Join ['', [!GetAtt SSMConnectionIdDynamoDBTable.Arn, '*']]
+              -
+                Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Replacement of this resource is not required, and explicit name of this resource is easy for user to identify"
+
+  EmailNotificationLambdaDLQ:
+    Type: 'AWS::SQS::Queue'
+    Properties:
+      QueueName: !Sub '${Application}-${Environment}-email-notification-dlq'
+      MessageRetentionPeriod: 1209600  # 14 days
+      Tags:
+        - Key: application
+          Value: !Ref Application
+        - Key: environment
+          Value: !Ref Environment
+
+  UINotificationLambdaDLQ:
+    Type: 'AWS::SQS::Queue'
+    Properties:
+      QueueName: !Sub '${Application}-${Environment}-ui-notification-dlq'
+      MessageRetentionPeriod: 1209600  # 14 days
+      Tags:
+        - Key: application
+          Value: !Ref Application
+        - Key: environment
+          Value: !Ref Environment
+
+  # SNS Topic
+  EmailSNSTopic:
+    Type: 'AWS::SNS::Topic'
+    Properties:
+      TopicName: !Sub ${Application}-${Environment}-email-sns
+      DisplayName: !Sub ${Application} ${Environment} Email Notifications
+      KmsMasterKeyId: 'alias/aws/sns'
+      FifoTopic: false
+      TracingConfig: Active
+      Tags:
+        - Key: application
+          Value: !Ref Application
+        - Key: environment
+          Value: !Ref Environment
+
+  EmailNotificationLambdaRole:
+    Type: AWS::IAM::Role
+    DependsOn: 
+      - EmailNotificationLambdaDLQ
+      - EmailSNSTopic
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: Email-SQS-DLQ-Permissions
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource: !GetAtt EmailNotificationLambdaDLQ.Arn
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: !Sub 'arn:${AWS::Partition}:xray:${AWS::Region}:${AWS::AccountId}:trace/*'
+        - PolicyName: SNSPublishPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'sns:Publish'
+                  - 'sns:ListSubscriptionsByTopic'
+                  - 'sns:GetTopicAttributes'
+                Resource: !Ref EmailSNSTopic
+        - PolicyName: DynamoDBPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                Resource: 
+                  - !Join ['', [!GetAtt PipelinesTable.Arn, '*']]
+        - PolicyName: CognitoPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cognito-idp:ListUsersInGroup
+                Resource: !Sub 'arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*'
+
+  UINotificationLambdaRole:
+    Type: AWS::IAM::Role
+    DependsOn: UINotificationLambdaDLQ
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: UI-SQS-DLQ-Permissions
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource: !GetAtt UINotificationLambdaDLQ.Arn
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: !Sub 'arn:${AWS::Partition}:xray:${AWS::Region}:${AWS::AccountId}:trace/*'
+        - PolicyName: UI-PostAPIMessage
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - !If
+                - DeploymentPublic
+                - Effect: Allow
+                  Action:
+                    - 'execute-api:ManageConnections'
+                  Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${SSMSocketAPI}/prod/POST/@connections/*"
+                - !Ref 'AWS::NoValue'
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:Scan'
+                Resource:
+                  - !Join [ '', [ !GetAtt SSMConnectionIdDynamoDBTable.Arn, '*' ] ]
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource: !GetAtt UINotificationLambdaDLQ.Arn
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: !Sub 'arn:${AWS::Partition}:xray:${AWS::Region}:${AWS::AccountId}:trace/*'
+  EmailNotificationLambdaFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: 
+      - EmailNotificationLambdaRole
+      - EmailNotificationLambdaDLQ
+      - EmailSNSTopic
+    Properties:
+      Environment:
+        Variables:
+          application: !Sub ${Application}
+          environment: !Sub ${Environment}
+          region: !Ref "AWS::Region"
+          user_pool_id: !Ref CognitoUserPoolId
+          sns_topic_arn: !Ref EmailSNSTopic
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: !Join ["/", [!Ref KeyPrefix, "lambda_email_notification.zip"]]
+      Description: Lambda function for sending email notifications from EventBridge events
+      Handler: "lambda_email_notification.lambda_handler"
+      FunctionName: !Sub ${Application}-${Environment}-email-notification
+      Role: !GetAtt EmailNotificationLambdaRole.Arn
+      Runtime: !Ref LambdaRuntimePython
+      MemorySize: 512
+      Timeout: 900
+      TracingConfig:
+        Mode: Active
+      DeadLetterConfig:
+        TargetArn: !GetAtt EmailNotificationLambdaDLQ.Arn
+      Tags:
+        - Key: application
+          Value: !Ref Application
+        - Key: environment
+          Value: !Ref Environment
+      Layers:
+        - !Ref LambdaLayerStdPythonLibs
+        - !Ref LambdaLayerMFUtilsLib
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Deploy in AWS managed environment provides more flexibility for this solution"
+          - id: W92
+            reason: "Reserve Concurrent Execution is not needed for this solution"
+
+  UINotificationLambdaFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: 
+      - UINotificationLambdaRole
+      - UINotificationLambdaDLQ
+    Properties:
+      Environment:
+        Variables:
+          application: !Sub ${Application}
+          environment: !Sub ${Environment}
+          region: !Ref "AWS::Region"
+          SOLUTION_ID: !FindInMap [ "Solution", "Data", "SolutionID" ]
+          SOLUTION_VERSION: !FindInMap [ "Solution", "Data", "SolutionVersion" ]
+          socket_url: !If [ DeploymentPublic, !Sub "https://${SSMSocketAPI}.execute-api.${AWS::Region}.amazonaws.com/prod/", !Sub "PrivateNotDeployed"]
+          cors: !Ref CORS
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: !Join ["/", [!Ref KeyPrefix, "lambda_ui_notification.zip"]]
+      Description: Lambda function for handling UI notifications from EventBridge events
+      Handler: "lambda_ui_notification.lambda_handler"
+      FunctionName: !Sub ${Application}-${Environment}-ui-notification
+      Role: !GetAtt UINotificationLambdaRole.Arn
+      Runtime: !Ref LambdaRuntimePython
+      MemorySize: 512
+      Timeout: 900
+      TracingConfig:
+        Mode: Active
+      DeadLetterConfig:
+        TargetArn: !GetAtt UINotificationLambdaDLQ.Arn
+      Tags:
+        - Key: application
+          Value: !Ref Application
+        - Key: environment
+          Value: !Ref Environment
+      Layers:
+        - !Ref LambdaLayerStdPythonLibs
+        - !Ref LambdaLayerMFUtilsLib
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Deploy in AWS managed environment provides more flexibility for this solution"
+          - id: W92
+            reason: "Reserve Concurrent Execution is not needed for this solution"
+
+  MigrationFactoryEventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: !Sub ${Application}-${Environment}-event-bus
+      Tags:
+        - Key: application
+          Value: !Ref Application
+        - Key: environment
+          Value: !Ref Environment
+
+  EmailNotificationEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: "EventBridge rule to trigger email notification lambda"
+      EventBusName: !Ref MigrationFactoryEventBus
+      EventPattern:
+        source:
+          - !Sub ${Application}-${Environment}-task-orchestrator
+        detail-type:
+          - "EmailAutomationTaskType"
+          - "TaskManualApprovalNeeded"
+          - "TaskFailed"
+      State: "ENABLED"
+      Targets:
+        - Arn: !GetAtt EmailNotificationLambdaFunction.Arn
+          Id: "EmailNotificationTarget"
+          RetryPolicy:
+            MaximumEventAgeInSeconds: 86400  # 24 hours
+            MaximumRetryAttempts: 3
+          DeadLetterConfig:
+            Arn: !GetAtt EmailNotificationLambdaDLQ.Arn
+
+  EmailNotificationLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref EmailNotificationLambdaFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt EmailNotificationEventRule.Arn
+
+  UINotificationEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: "EventBridge rule to trigger UI notification lambda"
+      EventBusName: !Ref MigrationFactoryEventBus
+      EventPattern:
+        source:
+          - !Sub ${Application}-${Environment}-ssm-output
+        detail-type:
+          - "TaskFailed"
+          - "TaskSuccess"
+          - "TaskTimedOut"
+          - "TaskPending"
+      State: "ENABLED"
+      Targets:
+        - Arn: !GetAtt UINotificationLambdaFunction.Arn
+          Id: "UINotificationTarget"
+          RetryPolicy:
+            MaximumEventAgeInSeconds: 86400  # 24 hours
+            MaximumRetryAttempts: 3
+          DeadLetterConfig:
+            Arn: !GetAtt UINotificationLambdaDLQ.Arn
+
+  UINotificationLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref UINotificationLambdaFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt UINotificationEventRule.Arn
+
+
+  # lambda_ssm.py
+  LambdaFunctionSSM:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: lambda_ssm.lambda_handler
+      Runtime: !Ref LambdaRuntimePython
+      FunctionName: !Sub ${Application}-${Environment}-ssm
+      Timeout: '300'
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: !Join ["/", [!Ref KeyPrefix, "lambda_ssm.zip"]]
+      Role: !GetAtt SSMLambdaRole.Arn
+      LoggingConfig:
+        LogGroup: !Ref SSMLogGroup
+      Environment:
+        Variables:
+          application: !Ref Application
+          environment: !Ref Environment
+          ssm_bucket: !Ref SSMBucket
+          ssm_automation_document: !Ref RunCMFAutomationPackageSSMDocument
+          direct_ssm_execution_document: !Ref AdditionalAutomationTargetSSMDocument
+          mf_userapi: !Ref UserAPI
+          mf_toolsapi: !Ref ToolsAPI
+          mf_loginapi: !Ref LoginAPI
+          mf_vpce_id: !Ref VPCEID
+          mf_cognitouserpoolid: !Ref CognitoUserPoolId
+          mf_region: !Ref Region
+          region: !Ref AWS::Region
+          userpool: !Ref CognitoUserPoolId
+          clientid: !Ref CognitoAppClientId
+          cors: !Ref CORS
+          SOLUTION_ID: !FindInMap [ "Solution", "Data", "SolutionID" ]
+          SOLUTION_VERSION: !FindInMap [ "Solution", "Data", "SolutionVersion" ]
+      Tags:
+        -
+          Key: application
+          Value: !Ref Application
+        -
+          Key: environment
+          Value: !Ref Environment
+        -
+          Key: Name
+          Value: !Sub ${Application}-${Environment}-ssm
+      Layers:
+        - !Ref LambdaLayerStdPythonLibs
+        - !Ref LambdaLayerMFPolicyLib
+        - !Ref LambdaLayerMFUtilsLib
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Deploy in AWS managed environment provides more flexibility for this solution"
+          - id: W92
+            reason: "Reserve Concurrent Execution is not needed for this solution"
+
+  LambdaPermissionSSM:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      FunctionName: !GetAtt LambdaFunctionSSM.Arn
+      Action: 'lambda:InvokeFunction'
+      Principal: 'apigateway.amazonaws.com'
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ToolsAPI}/*'
+
+  # lambda_ssm_jobs.py
+  LambdaFunctionSSMJobs:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: lambda_ssm_jobs.lambda_handler
+      Runtime: !Ref LambdaRuntimePython
+      FunctionName: !Sub ${Application}-${Environment}-ssm-jobs
+      Timeout: '120'
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: !Join ["/", [!Ref KeyPrefix, "lambda_ssm_jobs.zip"]]
+      Role: !GetAtt SSMJobsLambdaRole.Arn
+      LoggingConfig:
+        LogGroup: !Ref SSMJobsLogGroup
+      Environment:
+        Variables:
+          application: !Ref Application
+          environment: !Ref Environment
+          cors: !Ref CORS
+          SOLUTION_ID: !FindInMap [ "Solution", "Data", "SolutionID" ]
+          SOLUTION_VERSION: !FindInMap [ "Solution", "Data", "SolutionVersion" ]
+      Tags:
+        -
+          Key: application
+          Value: !Ref Application
+        -
+          Key: environment
+          Value: !Ref Environment
+        -
+          Key: Name
+          Value: !Sub ${Application}-${Environment}-ssm-jobs
+      Layers:
+        - !Ref LambdaLayerStdPythonLibs
+        - !Ref LambdaLayerMFUtilsLib
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Deploy in AWS managed environment provides more flexibility for this solution"
+          - id: W92
+            reason: "Reserve Concurrent Execution is not needed for this solution"
+
+  LambdaPermissionSSMJobs:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      FunctionName: !GetAtt LambdaFunctionSSMJobs.Arn
+      Action: 'lambda:InvokeFunction'
+      Principal: 'apigateway.amazonaws.com'
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ToolsAPI}/*'
+
+  # lambda_ssm_scripts.py
+  LambdaFunctionSSMScripts:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: lambda_ssm_scripts.lambda_handler
+      Runtime: !Ref LambdaRuntimePython
+      FunctionName: !Sub ${Application}-${Environment}-ssm-scripts
+      Timeout: '300'
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: !Join ["/", [!Ref KeyPrefix, "lambda_ssm_scripts.zip"]]
+      Role: !GetAtt SSMScriptsLambdaRole.Arn
+      Environment:
+        Variables:
+          application: !Ref Application
+          environment: !Ref Environment
+          scripts_bucket_name: !Ref SSMBucket
+          scripts_table: !Ref SSMScriptsTable
+          region: !Ref AWS::Region
+          userpool: !Ref CognitoUserPoolId
+          clientid: !Ref CognitoAppClientId
+          cors: !Ref CORS
+          SOLUTION_ID: !FindInMap [ "Solution", "Data", "SolutionID" ]
+          SOLUTION_VERSION: !FindInMap [ "Solution", "Data", "SolutionVersion" ]
+      Tags:
+        -
+          Key: application
+          Value: !Ref Application
+        -
+          Key: environment
+          Value: !Ref Environment
+        -
+          Key: Name
+          Value: !Sub ${Application}-${Environment}-ssm-scripts
+      Layers:
+        - !Ref LambdaLayerStdPythonLibs
+        - !Ref LambdaLayerMFPolicyLib
+        - !Ref LambdaLayerMFItemsLib
+        - !Ref LambdaLayerMFUtilsLib
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Deploy in AWS managed environment provides more flexibility for this solution"
+          - id: W92
+            reason: "Reserve Concurrent Execution is not needed for this solution"
+
+  LambdaPermissionSSMScripts:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      FunctionName: !GetAtt LambdaFunctionSSMScripts.Arn
+      Action: 'lambda:InvokeFunction'
+      Principal: 'apigateway.amazonaws.com'
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ToolsAPI}/*'
+
+  # lambda_ssm_socket.py
+  LambdaFunctionSSMSocket:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: lambda_ssm_socket.lambda_handler
+      Runtime: !Ref LambdaRuntimePython
+      FunctionName: !Sub ${Application}-${Environment}-ssm-socket
+      Timeout: '300'
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: !Join ["/", [!Ref KeyPrefix, "lambda_ssm_socket.zip"]]
+      Role: !GetAtt SSMSocketLambdaRole.Arn
+      Environment:
+        Variables:
+          application: !Ref Application
+          environment: !Ref Environment
+          region: !Ref AWS::Region
+          userpool_id: !Ref CognitoUserPoolId
+          app_client_id: !Ref CognitoAppClientId
+          cors: !Ref CORS
+          SOLUTION_ID: !FindInMap [ "Solution", "Data", "SolutionID" ]
+          SOLUTION_VERSION: !FindInMap [ "Solution", "Data", "SolutionVersion" ]
+      Tags:
+        -
+          Key: application
+          Value: !Ref Application
+        -
+          Key: environment
+          Value: !Ref Environment
+        -
+          Key: Name
+          Value: !Sub ${Application}-${Environment}-ssm-socket
+      Layers:
+        - !Ref LambdaLayerStdPythonLibs
+        - !Ref LambdaLayerMFUtilsLib
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Deploy in AWS managed environment provides more flexibility for this solution"
+          - id: W92
+            reason: "Reserve Concurrent Execution is not needed for this solution"
+
+  LambdaPermissionSSMSocket:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      FunctionName: !GetAtt LambdaFunctionSSMSocket.Arn
+      Action: 'lambda:InvokeFunction'
+      Principal: 'apigateway.amazonaws.com'
+
+  LambdaFunctionSSMOutput:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: lambda_ssm_output.lambda_handler
+      Runtime: !Ref LambdaRuntimePython
+      FunctionName: !Sub ${Application}-${Environment}-ssm-output
+      Timeout: '300'
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: !Join ["/", [!Ref KeyPrefix, "lambda_ssm_output.zip"]]
+      Role: !GetAtt SSMOutputLambdaRole.Arn
+      Environment:
+        Variables:
+          EVENT_BUS_NAME: !Ref MigrationFactoryEventBus
+          application: !Ref Application
+          environment: !Ref Environment
+          cors: !Ref CORS
+          SOLUTION_ID: !FindInMap [ "Solution", "Data", "SolutionID" ]
+          SOLUTION_VERSION: !FindInMap [ "Solution", "Data", "SolutionVersion" ]
+      Tags:
+        -
+          Key: application
+          Value: !Ref Application
+        -
+          Key: environment
+          Value: !Ref Environment
+        -
+          Key: Name
+          Value: !Sub ${Application}-${Environment}-ssm-output
+      Layers:
+        - !Ref LambdaLayerStdPythonLibs
+        - !Ref LambdaLayerMFUtilsLib
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Deploy in AWS managed environment provides more flexibility for this solution"
+          - id: W92
+            reason: "Reserve Concurrent Execution is not needed for this solution"
+
+  LambdaPermissionSSMOutput:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      FunctionName: !GetAtt LambdaFunctionSSMOutput.Arn
+      Action: 'lambda:InvokeFunction'
+      Principal: !Sub 'logs.${AWS::Region}.amazonaws.com'
+      SourceArn: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${RunCMFAutomationPackageSSMDocumentLogGroup}:*"
+
+  # lambda_ssm_load_scripts.py
+  LambdaFunctionSSMLoadScripts:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: lambda_ssm_load_scripts.lambda_handler
+      Runtime: !Ref LambdaRuntimePython
+      FunctionName: !Sub ${Application}-${Environment}-ssm-load-scripts
+      Timeout: '300'
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: !Join ["/", [!Ref KeyPrefix, "lambda_ssm_load_scripts.zip"]]
+      Role: !GetAtt SSMLoadScriptsLambdaRole.Arn
+      Environment:
+        Variables:
+          application: !Ref Application
+          environment: !Ref Environment
+          ScriptsDynamoDBTable: !Ref SSMScriptsTable
+          code_bucket_name: !Ref CodeBucket
+          key_prefix: !Ref KeyPrefix
+          SOLUTION_ID: !FindInMap [ "Solution", "Data", "SolutionID" ]
+          SOLUTION_VERSION: !FindInMap [ "Solution", "Data", "SolutionVersion" ]
+      Tags:
+        -
+          Key: application
+          Value: !Ref Application
+        -
+          Key: environment
+          Value: !Ref Environment
+        -
+          Key: Name
+          Value: !Sub ${Application}-${Environment}-ssm-load-scripts
+      Layers:
+        - !Ref LambdaLayerStdPythonLibs
+        - !Ref LambdaLayerMFPolicyLib
+        - !Ref LambdaLayerMFUtilsLib
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Deploy in AWS managed environment provides more flexibility for this solution"
+          - id: W92
+            reason: "Reserve Concurrent Execution is not needed for this solution"
+
+  LoadScriptsCustomResource:
+    Type: Custom::CustomResource
+    DependsOn: LambdaFunctionSSMScripts
+    Properties:
+      ServiceToken: !GetAtt 'LambdaFunctionSSMLoadScripts.Arn'
+      Version: '%%VERSION%%'
+
+  # RunCMFAutomationPackageSSMDocuments Log Group
+  RunCMFAutomationPackageSSMDocumentLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/ssm/${Application}-${Environment}-remote-automation-output
+      RetentionInDays: 180
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W84
+            reason: "SSE is currently not supported, CMK is not ideal for this solution"
+
+  # RunCMFAutomationPackageSSMDocuments Log Subscription Filter
+  SubscriptionFilter:
+    DependsOn: LambdaPermissionSSMOutput
+    Type: AWS::Logs::SubscriptionFilter
+    Properties:
+      LogGroupName: !Ref RunCMFAutomationPackageSSMDocumentLogGroup
+      FilterPattern: ""
+      DestinationArn: !GetAtt LambdaFunctionSSMOutput.Arn
+
+  # Automation Server role to run scripts using SSM
+  AutomationServerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${Application}-${Environment}-automation-server
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+                - ssm.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore'
+        - 'arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM'
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Replacement of this resource is not required, and explicit name of this resource is easy for user to identify"
+
+  #IAM Policy for AutomationServerRole
+  AutomationServerPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub ${Application}-${Environment}-AutomationInstancePolicy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          -
+            Effect: Allow
+            Action:
+              - 's3:PutObject'
+              - 's3:GetObject'
+              - 's3:ListBucket'
+              - 's3:PutObjectAcl'
+              - 's3:GetObjectVersion'
+            Resource:
+              - !Sub "arn:aws:s3:::${SSMBucket}"
+              - !Sub "arn:aws:s3:::${SSMBucket}/*"
+          -
+            Effect: Allow
+            Action:
+              - 's3:PutObject'
+              - 's3:GetObject'
+            Resource:
+              - !Sub "arn:aws:s3:::${PostMigrationReportsBucket}"
+              - !Sub "arn:aws:s3:::${PostMigrationReportsBucket}/*"
+          -
+            Effect: Allow
+            Action:
+              - 'iam:PassRole'
+              - 'sts:AssumeRole'
+            Resource: 'arn:aws:iam::*:role/CMF*'
+          -
+            Effect: Allow
+            Action:
+              - 'secretsmanager:DescribeSecret'
+              - 'secretsmanager:GetSecretValue'
+            Resource: !Sub 'arn:aws:secretsmanager:*:${AWS::AccountId}:secret:*'
+          -
+            Effect: Allow
+            Action:
+              - 'secretsmanager:ListSecrets'
+            Resource: '*'
+          -
+            Effect: Allow
+            Action:
+              - 'rekognition:DetectText'
+            Resource: '*'
+      Roles:
+        - !Ref AutomationServerRole
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "ListSecrets does not support resource-level permissions"
+          - id: W12
+            reason: "ListSecrets does not support resource-level permissions"
+          - id: W13
+            reason: "ListSecrets does not support resource-level permissions"
+          - id: W28
+            reason: "Replacement of this resource is not required, and explicit name of this resource is easy for user to identify"
+
+  AutomationServerInsProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      InstanceProfileName: !Sub ${Application}-${Environment}-AutomationServer-profile
+      Roles:
+        - !Ref AutomationServerRole
+
+  # Systems Manager
+  RunCMFAutomationPackageSSMDocument:
+    Type: "AWS::SSM::Document"
+    Properties:
+        DocumentFormat: "YAML"
+        DocumentType: "Automation"
+        Tags:
+        -
+          Key: application
+          Value: !Ref Application
+        -
+          Key: environment
+          Value: !Ref Environment
+        Content:
+            description: |
+              # AWS Cloud Migration Factory Solution (AWS CMF)
+              ## Automation Document for AWS CMF remote automation feature.
+              Downloads an AWS CMF script package zip file from the deployed AWS CMF S3 bucket to the target SSM Managed Instance, extracts the contents and runs the Master python script contained in the zip.
+              The script packages that are downloaded contain customer automation code to perform any tasks required. This SSM document is a wrapper to deploy and run these custom code packages on a pre-selected automation server.
+            schemaVersion: '0.3'
+            assumeRole: !GetAtt SSMAutomationRole.Arn
+            outputs:
+              - package_download.error
+              - package_download.bucket_name
+              - package_download.cmf_instance_name
+              - package_download.cmf_instance_env
+              - package_download.script_key
+              - package_download.script_name
+              - package_download.script_version
+              - package_download.instance_ids
+              - get_script_from_s3.script_path
+              - verify_script.result
+            parameters:
+              bucketName:
+                type: String
+                description: "(Required) The name of the S3 bucket where the AWS Cloud Migration Factory automation package zip file resides."
+                allowedValues:
+                  - !Ref SSMBucket
+              cmfInstance:
+                description: "(Required) Instance/Application Name of the AWS Cloud Migration Factory instance."
+                type: String
+              cmfEnvironment:
+                description: "(Required) Instance/Application Environment of the AWS Cloud Migration Factory instance."
+                type: String
+              payload:
+                type: String
+                description: "(Required) JSON job data obtained from the AWS Cloud Migration Factory SSM Job creation Lambda."
+              instanceID:
+                type: String
+                description: "(Required) Instance ID of the AWS Cloud Migration Factory automation server."
+            mainSteps:
+              - name: package_download
+                timeoutSeconds: 120
+                maxAttempts: 3
+                action: 'aws:executeScript'
+                inputs:
+                  Runtime: python3.11
+                  Handler: script_handler
+                  InputPayload:
+                    bucket_name: '{{bucketName}}'
+                    body: '{{payload}}'
+                    instance_id: '{{instanceID}}'
+                    cmf_instance_name: '{{cmfInstance}}'
+                    cmf_instance_env: '{{cmfEnvironment}}'
+                  Script: |-
+                    import json
+                    import os
+                    import boto3
+                    import zipfile
+                    import subprocess
+                    from botocore.exceptions import ClientError
+                    from pathlib import WindowsPath
+                    
+                    # Create S3 Client
+                    S3 = boto3.resource('s3')
+                    def script_handler(events, context):
+                        # Storing the payload from the JSON body
+                        # sourceServer = body.get('sourceServers')
+                        
+                        payload = events.get('body')
+                        body = json.loads(payload)
+
+                        script = body.get('script')
+                        bucket_name = events.get('bucket_name')
+                        cmf_instance_name = events.get('cmf_instance_name')
+                        cmf_instance_env = events.get('cmf_instance_env')
+                        id = events.get('instance_id')
+                        instance_ids = [id]
+                        script_key = script.get('package_uuid')
+                        script_version = script.get('version_id')
+                        script_name = script.get('script_name')
+                        ssm_id = body.get('SSMId')
+                        mf_endpoints = body.get('mf_endpoints')               # Get MF endpoint details.
+                        
+                        command = 'python '+ script['script_masterfile']
+
+                        for name, value in script['script_arguments'].items():
+                            if value:
+                                if str(value).strip() != "":
+                                    command += ' --' + name + ' ' + str(value)
+                        
+                        command += ' --NoPrompts True'
+
+                        return {'ssm_id':ssm_id, 'command':command, 'bucket_name':bucket_name, 'cmf_instance_env':cmf_instance_env, 'cmf_instance_name': cmf_instance_name, 'script_name':script_name, 'script_version':script_version, 'script_key':script_key, 'instance_ids': instance_ids, 'mf_endpoints': mf_endpoints}
+
+                outputs:
+                  - Name: mf_endpoints_Region
+                    Selector: $.Payload.mf_endpoints.Region
+                    Type: String
+
+                  - Name: mf_endpoints_VpceId
+                    Selector: $.Payload.mf_endpoints.VpceId
+                    Type: String
+
+                  - Name: mf_endpoints_UserApi
+                    Selector: $.Payload.mf_endpoints.UserApi
+                    Type: String
+
+                  - Name: mf_endpoints_LoginApi
+                    Selector: $.Payload.mf_endpoints.LoginApi
+                    Type: String
+
+                  - Name: mf_endpoints_ToolsApi
+                    Selector: $.Payload.mf_endpoints.ToolsApi
+                    Type: String
+
+                  - Name: mf_endpoints_UserPoolId
+                    Selector: $.Payload.mf_endpoints.UserPoolId
+                    Type: String
+
+                  - Name: mf_endpoints_UserPoolClientId
+                    Selector: $.Payload.mf_endpoints.UserPoolClientId
+                    Type: String
+
+                  - Name: mf_endpoints
+                    Selector: $.Payload.mf_endpoints
+                    Type:  StringMap
+
+                  - Name: command
+                    Selector: $.Payload.command
+                    Type: String
+
+                  - Name: error
+                    Selector: $.Payload.error
+                    Type: String
+
+                  - Name: bucket_name
+                    Selector: $.Payload.bucket_name
+                    Type: String
+
+                  - Name: script_name
+                    Selector: $.Payload.script_name
+                    Type: String
+
+                  - Name: script_version
+                    Selector: $.Payload.script_version
+                    Type: String
+
+                  - Name: script_key
+                    Selector: $.Payload.script_key
+                    Type: String
+
+                  - Name: instance_ids
+                    Selector: $.Payload.instance_ids
+                    Type: StringList
+
+                  - Name: ssm_id
+                    Selector: $.Payload.ssm_id
+                    Type: String
+
+                  - Name: cmf_instance_name
+                    Type: String
+                    Selector: $.Payload.cmf_instance_name
+
+                  - Name: cmf_instance_env
+                    Type: String
+                    Selector: $.Payload.cmf_instance_env
+
+                nextStep: get_script_from_s3
+              - name: get_script_from_s3
+                action: 'aws:runCommand'
+                timeoutSeconds: 240
+                maxAttempts: 2
+                inputs:
+                  DocumentName: AWS-RunPowerShellScript
+                  InstanceIds:
+                    - '{{package_download.instance_ids}}'
+                  Parameters:
+                    commands:
+                      - Write-Host [{{ package_download.ssm_id }}] Successfully packaged [{{package_download.script_name}}]
+                      - New-Item -ItemType 'directory' -Path 'c:\migrations\scripts\downloads' -Force | Out-Null
+                      - New-Item -ItemType 'directory' -Path 'c:\migrations\scripts\history' -Force | Out-Null
+                      - $file = 'c:\migrations\scripts\downloads\{{package_download.script_key}}.zip'
+                      - "Try {Read-S3Object -BucketName '{{package_download.bucket_name}}' -File $file -Key 'scripts/{{package_download.script_key}}.zip' -Version '{{package_download.script_version}}' | Out-Null} Catch {$_ | Out-File C:\\migrations\\Scripts\\downloads\\logs.txt; Write-Host '[{{ package_download.ssm_id }}]' Error downloading script from S3 bucket ('{{package_download.bucket_name}}') to automation server: $_; Write-Host '[{{ package_download.ssm_id }}] JOB_FAILED'; exit 255}"
+                      - $dt = (Get-Date).ToString('MM-dd-yyyy-hh.mm.sstt')
+                      - $json = @{VpceId='{{package_download.mf_endpoints_VpceId}}'; LoginApi='{{package_download.mf_endpoints_LoginApi}}'; UserApi='{{package_download.mf_endpoints_UserApi}}'; ToolsApi='{{package_download.mf_endpoints_ToolsApi}}'; UserPoolId='{{package_download.mf_endpoints_UserPoolId}}'; UserPoolClientId='{{package_download.mf_endpoints_UserPoolClientId}}'; Region='{{package_download.mf_endpoints_Region}}'}
+                      - $target_folder = 'c:\migrations\scripts\history\{{package_download.script_key}}-' + $dt
+                      - $target_folder | Out-File -FilePath 'c:\migrations\scripts\downloads\script_path.txt' -NoNewline
+                      - "Try{Expand-Archive -LiteralPath $file -DestinationPath $target_folder | Out-Null} Catch {Write-Host '[{{ package_download.ssm_id }}] Error extracting script archive to automation server: ' $_; Write-Host '[{{ package_download.ssm_id }}] JOB_FAILED'; exit 255}"
+                      - $json | ConvertTo-Json | Out-File -Encoding ASCII -FilePath "$target_folder\FactoryEndpoints.json" -NoNewline
+                      - "Write-Host [{{ package_download.ssm_id }}] Successfully downloaded script to: $target_folder -NoNewLine"
+                  CloudWatchOutputConfig:
+                    CloudWatchOutputEnabled: true
+                    CloudWatchLogGroupName: !Sub /aws/ssm/${Application}-${Environment}-remote-automation-output
+                  ServiceRoleArn: !GetAtt SSMAutomationRole.Arn
+                outputs:
+                  - Name: script_path
+                    Selector: $.Output
+                    Type: String
+                nextStep: verify_script
+              - name: verify_script
+                action: 'aws:runCommand'
+                timeoutSeconds: 240
+                maxAttempts: 2
+                inputs:
+                  DocumentName: AWS-RunPowerShellScript
+                  InstanceIds:
+                    - '{{package_download.instance_ids}}'
+                  Parameters:
+                    commands:
+                      - $fileexist = $true
+                      - $script_path = '{{ get_script_from_s3.script_path }}'
+                      - "$script_path = $script_path -replace \".`n\" -replace \".*: \""
+                      - $fileexist = Test-Path -Path $script_path
+                      - $fileexist = Test-Path -Path "$script_path\Package-Structure.yml"
+                      - if ($fileexist) { $configfile = get-content "$script_path\Package-Structure.yml" }
+                      - if ($configfile[2] -Like '*MasterFileName*') {$masterfilename = $configfile[2].split(":")[1].trim().trim("'").trim('"') }
+                      - $path = "$script_path\" + $masterfilename
+                      - $result = Test-Path -Path $path
+                      - "if (\"$result\" -eq \"True\") {"
+                      - Write-Host [{{ package_download.ssm_id }}] Successfully verified script package contents
+                      - "}"
+                      - else {
+                      - Write-Host [{{ package_download.ssm_id }}] Failed to verify downloaded script package contents on automation server.
+                      - Write-Host '[{{ package_download.ssm_id }}] JOB_FAILED'
+                      - exit 255
+                      - "}"
+                  CloudWatchOutputConfig:
+                    CloudWatchOutputEnabled: true
+                    CloudWatchLogGroupName: !Sub /aws/ssm/${Application}-${Environment}-remote-automation-output
+                  ServiceRoleArn: !GetAtt SSMAutomationRole.Arn
+                outputs:
+                  - Name: result
+                    Selector: $.Output
+                    Type: String
+                nextStep: run_script
+              - name: run_script
+                action: 'aws:runCommand'
+                timeoutSeconds: 43200
+                maxAttempts: 1
+                inputs:
+                  DocumentName: AWS-RunPowerShellScript
+                  InstanceIds:
+                    - '{{package_download.instance_ids}}'
+                  Parameters:
+                    executionTimeout: '43200'
+                    commands:
+                      - "if (\"{{ verify_script.result }}\" -Match \"Success\") {"
+                      - "    $Env:CMF_SCRIPTS_BUCKET = \"{{ package_download.bucket_name }}\""
+                      - "    $Env:CMF_SCRIPT_NAME = \"{{ package_download.script_name }}\""
+                      - "    $Env:CMF_SCRIPT_VERSION = \"{{ package_download.script_version }}\""
+                      - "    $Env:CMF_INSTANCE_NAME = \"{{ package_download.cmf_instance_name }}\""
+                      - "    $Env:CMF_INSTANCE_ENV = \"{{ package_download.cmf_instance_env }}\""
+                      - "    $script_path = '{{ get_script_from_s3.script_path }}'"
+                      - "    $script_path = $script_path -replace \".`n\" -replace \".*: \""
+                      - "    cd $script_path"
+                      - "    {{ package_download.command }} 2>>stderr.txt | ForEach-Object { \"[{{ package_download.ssm_id }}] $_\" }"
+                      - "    #check to see if previous command causes error"
+                      - "    if (!($?)) {"
+                      - "        Write-Host [{{ package_download.ssm_id }}] $Error[0]"
+                      - "        $stderr = Get-Content stderr.txt"
+                      - "        Write-Host [{{ package_download.ssm_id }}] $stderr"
+                      - "        Write-Host [{{ package_download.ssm_id }}] JOB_FAILED"
+                      - "        #causes automation step to fail"
+                      - "        exit 255"
+                      - "    }"
+                      - "    else {"
+                      - "        Write-Host [{{ package_download.ssm_id }}] JOB_COMPLETE"
+                      - "        exit $LASTEXITCODE"
+                      - "    }"
+                      - "}"
+                      - "else {"
+                      - "    Write-Host [{{ package_download.ssm_id }}] JOB_FAILED"
+                      - "    exit 255"
+                      - "}"
+                  CloudWatchOutputConfig:
+                    CloudWatchOutputEnabled: true
+                    CloudWatchLogGroupName: !Sub /aws/ssm/${Application}-${Environment}-remote-automation-output
+                  ServiceRoleArn: !GetAtt SSMAutomationRole.Arn
+
+  SSMAutomationRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub ${Application}-${Environment}-ssm-automation-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - ssm.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        -
+          PolicyName: SSMAutomationRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - 'ssm:DescribeInstanceInformation'
+                  - 'ssm:ListCommandInvocations'
+                  - 'ssm:ListCommands'
+                Resource: '*'
+              -
+                Effect: Allow
+                Action:
+                  - 'ssm:SendCommand'
+                Resource:
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:document/*'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}::document/AWS-RunPowerShellScript'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:managed-instance/*'
+                  - !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*'
+              -
+                Effect: Allow
+                Action:
+                  - 'iam:PassRole'
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/${Application}-${Environment}-ssm-automation-role"
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "The resources ARN is unknown, because it is depends on user input"
+          - id: W28
+            reason: "Replacement of this resource is not required, and explicit name of this resource is easy for user to identify"
+
+  ScriptsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SSMBucket
+      PolicyDocument:
+        Statement:
+          -
+            Action:
+              - "s3:DeleteBucket"
+            Effect: "Deny"
+            Resource: !GetAtt SSMBucket.Arn
+            Principal: "*"
+          - 
+            Action: s3:*
+            Effect: Deny
+            Principal: '*'
+            Resource:
+              - !Sub "${SSMBucket.Arn}/*"
+              - !GetAtt SSMBucket.Arn
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+
+  ScriptsOutputBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref PostMigrationReportsBucket
+      PolicyDocument:
+        Statement:
+          -
+            Action:
+              - "s3:DeleteBucket"
+            Effect: "Deny"
+            Resource: !GetAtt PostMigrationReportsBucket.Arn
+            Principal: "*"
+          - 
+            Action: s3:*
+            Effect: Deny
+            Principal: '*'
+            Resource:
+              - !Sub "${PostMigrationReportsBucket.Arn}/*"
+              - !GetAtt PostMigrationReportsBucket.Arn
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+
+  SSMLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${Application}-${Environment}-SSM
+      RetentionInDays: 180
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W84
+            reason: "SSE is currently not supported, CMK is not ideal for this solution"
+
+  SSMPermissionPipelineTaskExecutionOutput:
+    DependsOn: SSMLogGroup
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      FunctionName: !Ref PipelineTaskExecutionOutputLambdaARN
+      Action: 'lambda:InvokeFunction'
+      Principal: !Sub 'logs.${AWS::Region}.amazonaws.com'
+      SourceArn: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${SSMLogGroup}:*"
+
+  SSMSubscriptionFilter:
+    DependsOn: SSMPermissionPipelineTaskExecutionOutput
+    Type: AWS::Logs::SubscriptionFilter
+    Properties:
+      LogGroupName: !Ref SSMLogGroup
+      FilterPattern: ""
+      DestinationArn: !Ref PipelineTaskExecutionOutputLambdaARN
+
+  SSMJobsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${Application}-${Environment}-SSM-Jobs
+      RetentionInDays: 180
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W84
+            reason: "SSE is currently not supported, CMK is not ideal for this solution"
+
+  SSMJobsPermissionPipelineTaskExecutionOutput:
+    DependsOn: SSMJobsLogGroup
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      FunctionName: !Ref PipelineTaskExecutionOutputLambdaARN
+      Action: 'lambda:InvokeFunction'
+      Principal: !Sub 'logs.${AWS::Region}.amazonaws.com'
+      SourceArn: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${SSMJobsLogGroup}:*"
+
+  SSMJobsSubscriptionFilter:
+    DependsOn: SSMJobsPermissionPipelineTaskExecutionOutput
+    Type: AWS::Logs::SubscriptionFilter
+    Properties:
+      LogGroupName: !Ref SSMJobsLogGroup
+      FilterPattern: ""
+      DestinationArn: !Ref PipelineTaskExecutionOutputLambdaARN
+
+  TemplateExportImportLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${Application}-${Environment}-TemplateExportImport
+      RetentionInDays: 180
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W84
+            reason: "SSE is currently not supported, CMK is not ideal for this solution"
+
+  TemplateExportImportLambdaRole:
+    DependsOn: TemplateExportImportLogGroup
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub ${Application}-${Environment}-templateexportimport-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: LambdaRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:Scan'
+                  - 'dynamodb:GetItem'
+                  - 'dynamodb:Query'
+                  - 'dynamodb:PutItem'
+                Resource:
+                  - !Join [ '', [ !GetAtt PipelineTemplatesTable.Arn, '*' ] ]
+                  - !Join [ '', [ !GetAtt PipelineTemplateTasksTable.Arn, '*' ] ]
+              - Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                Resource:
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${Application}-${Environment}-items"
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${Application}-${Environment}-item"
+                  - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${Application}-${Environment}-ssm-scripts"
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W28
+            reason: "Replacement of this resource is not required, and explicit name of this resource is easy for user to identify"
+
+  LambdaFunctionTemplateExportImport:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: lambda_import_export_pipeline_templates.lambda_handler
+      Runtime: !Ref LambdaRuntimePython
+      FunctionName: !Sub ${Application}-${Environment}-import_export_pipeline
+      Timeout: '300'
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: !Join [ "/", [ !Ref KeyPrefix, "lambda_import_export_pipeline_templates.zip" ] ]
+      Role: !GetAtt TemplateExportImportLambdaRole.Arn
+      LoggingConfig:
+        LogGroup: !Ref TemplateExportImportLogGroup
+      Environment:
+        Variables:
+          application: !Ref Application
+          environment: !Ref Environment
+          region: !Ref AWS::Region
+          userpool: !Ref CognitoUserPoolId
+          clientid: !Ref CognitoAppClientId
+          cors: !Ref CORS
+          SOLUTION_ID: !FindInMap [ "Solution", "Data", "SolutionID" ]
+          SOLUTION_VERSION: !FindInMap [ "Solution", "Data", "SolutionVersion" ]
+      Tags:
+        - Key: application
+          Value: !Ref Application
+        - Key: environment
+          Value: !Ref Environment
+        - Key: Name
+          Value: !Sub ${Application}-${Environment}-import_export_pipeline
+      Layers:
+        - !Ref LambdaLayerStdPythonLibs
+        - !Ref LambdaLayerMFPolicyLib
+        - !Ref LambdaLayerMFUtilsLib
+        - !Ref LambdaLayerMFItemsLib
+
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W89
+            reason: "Deploy in AWS managed environment provides more flexibility for this solution"
+          - id: W92
+            reason: "Reserve Concurrent Execution is not needed for this solution"
+
+  LambdaPermissionTemplateExportImport:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      FunctionName: !GetAtt LambdaFunctionTemplateExportImport.Arn
+      Action: 'lambda:InvokeFunction'
+      Principal: 'apigateway.amazonaws.com'
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ToolsAPI}/*'
+
+  AdditionalAutomationTargetSSMDocument:
+    Type: AWS::SSM::Document
+    Properties:
+        DocumentFormat: YAML
+        DocumentType: Automation
+        Tags:
+        -
+          Key: application
+          Value: !Ref Application
+        -
+          Key: environment
+          Value: !Ref Environment
+        Content:
+            description: Runs python scripts in its own environment
+            schemaVersion: '0.3'
+            assumeRole: !GetAtt SSMAdditionalAutomationRole.Arn
+            parameters:
+              bucketName:
+                type: String
+                description: "(Required) The name of the S3 bucket where the python automation package zip file resides."
+              payload:
+                type: String
+                description: "(Required) The payload to pass to the python script."
+            mainSteps:
+              - name: ExecutePythonScript
+                timeoutSeconds: 43200
+                action: aws:executeScript
+                inputs:
+                  Runtime: python3.11
+                  Handler: script_handler
+                  InputPayload:
+                    bucket_name: '{{bucketName}}'
+                    body: '{{payload}}'
+                    log_group_name: !Ref RunCMFAutomationPackageSSMDocumentLogGroup
+                  Script: |
+                    import os.path
+                    import boto3
+                    import os
+                    import json
+                    import zipfile
+                    import subprocess
+                    import sys
+                    from pathlib import Path
+                    from datetime import datetime
+                    from botocore.exceptions import ClientError
+                    import time
+                    import uuid
+
+                    def write_to_cloudwatch(message, log_group_name, log_stream_name, ssm_id):
+                        """
+                        Writes a message to CloudWatch Logs
+                        
+                        Args:
+                            message (str): The message to write to CloudWatch
+                            log_group_name (str): Name of the CloudWatch log group
+                            log_stream_name (str): Name of the log stream within the log group
+                            ssm_id (str): SSM Execution Id
+                        
+                        Returns:
+                            bool: True if successful, False otherwise
+                        """
+                        try:
+                            # Create CloudWatch Logs client
+                            logs_client = boto3.client('logs')
+                            
+                            # Create log stream if it doesn't exist
+                            try:
+                                logs_client.create_log_stream(
+                                    logGroupName=log_group_name,
+                                    logStreamName=log_stream_name
+                                )
+                            except ClientError as e:
+                                if e.response['Error']['Code'] != 'ResourceAlreadyExistsException':
+                                    raise
+                            
+                            appended_message = f'[{ssm_id}] {message}'
+                            # Prepare the log event
+                            log_event = {
+                                'logGroupName': log_group_name,
+                                'logStreamName': log_stream_name,
+                                'logEvents': [
+                                    {
+                                        'timestamp': int(datetime.utcnow().timestamp() * 1000),
+                                        'message': appended_message
+                                    }
+                                ]
+                            }
+                            
+                            # Get the sequence token if the stream exists and has data
+                            try:
+                                response = logs_client.describe_log_streams(
+                                    logGroupName=log_group_name,
+                                    logStreamNamePrefix=log_stream_name
+                                )
+                                if 'logStreams' in response and response['logStreams']:
+                                    stream = response['logStreams'][0]
+                                    if 'uploadSequenceToken' in stream:
+                                        log_event['sequenceToken'] = stream['uploadSequenceToken']
+                            except ClientError as e:
+                                print(f"Error getting sequence token: {str(e)}")
+                                return False
+
+                            # Put the log event
+                            logs_client.put_log_events(**log_event)
+                            return True
+
+                        except ClientError as e:
+                            print(f"Error writing to CloudWatch Logs: {str(e)}")
+                            return False
+
+                    def validate_python_file(file_path):
+                        """Validate if the file is a Python file"""
+                        if not file_path.endswith('.py'):
+                            raise ValueError("Master file must be a Python file (.py extension)")
+                        
+                        # Basic syntax check of the Python file
+                        try:
+                            with open(file_path, 'r') as f:
+                                compile(f.read(), file_path, 'exec')
+                        except SyntaxError as e:
+                            raise ValueError(f"Invalid Python file. Syntax error: {str(e)}")
+                        
+                    def script_handler(events, context):
+                        # Initialize S3 client
+                        s3 = boto3.client('s3')
+
+                        payload = events.get('body')
+                        body = json.loads(payload)
+
+                        script = body.get('script')
+                        bucket_name = events.get('bucket_name')
+                        script_key = script.get('package_uuid')
+                        script_version = script.get('version_id')
+                        script_name = script.get('script_name')
+                        ssm_id = body.get('SSMId')
+                        
+                        # S3 details - these should come from event or environment variables
+                        
+                        # Lambda can only write to /tmp directory
+                        local_zip = f'/tmp/{script_name}.zip'
+                        extract_path = f'/tmp/{script_name}'
+                        payload_file = '/tmp/payload.json'
+
+                        log_group_name = events.get('log_group_name')
+                        log_stream_name = datetime.now().strftime("%Y/%m/%d/%H-%M-%S")
+                        
+                        try:
+                            # Download zip file from S3
+                            s3.download_file(
+                                Bucket=bucket_name,
+                                Key= f'scripts/{script_key}.zip',
+                                Filename=local_zip,
+                                ExtraArgs={
+                                    'VersionId': script_version
+                                }
+                            )
+
+                            write_to_cloudwatch(f'Successfully downloaded script to: {local_zip}', log_group_name, log_stream_name, ssm_id)
+                            
+                            # Create extraction directory if it doesn't exist
+                            Path(extract_path).mkdir(parents=True, exist_ok=True)
+                            
+                            # Extract the zip file
+                            with zipfile.ZipFile(local_zip, 'r') as zip_ref:
+                                zip_ref.extractall(extract_path)
+                            
+                            # Verify PackageStructure.yml exists
+                            package_structure = os.path.join(extract_path, 'Package-Structure.yml')
+                            if not os.path.exists(package_structure):
+                                raise FileNotFoundError("Package-Structure.yml not found in zip file")
+                            
+                            # Read the third line and verify it starts with MasterFileName
+                            with open(package_structure, 'r') as f:
+                                lines = f.readlines()
+                                if len(lines) < 3:
+                                    raise ValueError("Invalid Package-Structure.yml format: Third line must start with 'MasterFileName:'")
+                                
+                                third_line = lines[2].strip()
+                                if not third_line.startswith('MasterFileName:'):
+                                    raise ValueError("Invalid Package-Structure.yml format: Third line must start with 'MasterFileName:'")
+                                
+                                # Extract the master filename
+                                master_file = third_line.split(':', 1)[1].strip().strip("'").strip('"')
+                                
+                                # Verify master file exists
+                                master_file_path = os.path.join(extract_path, master_file)
+                                if not os.path.exists(master_file_path):
+                                    raise FileNotFoundError(f"Master file {master_file} not found in extracted directory")
+                                
+                                # Validate that it's a proper Python file
+                                validate_python_file(master_file_path)
+
+                                write_to_cloudwatch('Successfully verified script package content', log_group_name, log_stream_name, ssm_id)
+                                
+                                # Prepare the Python command
+                                python_cmd = [sys.executable, master_file_path]
+                                
+                                # Add script arguments
+                                for name, value in script['script_arguments'].items():
+                                    python_cmd.extend([f'--{name}', str(value)])
+                                
+                                write_to_cloudwatch(f'Python command generated: {python_cmd}', log_group_name, log_stream_name, ssm_id)
+
+                                # Execute the Python script as a subprocess
+                                process = subprocess.run(
+                                    python_cmd,
+                                    cwd=extract_path,
+                                    capture_output=True,
+                                    text=True,
+                                    check=True,
+                                    env={
+                                        **os.environ,
+                                        'PYTHONPATH': extract_path  # Add extract path to PYTHONPATH
+                                    }
+                                )
+                                
+                                write_to_cloudwatch(process.stdout, log_group_name, log_stream_name, ssm_id)
+                                write_to_cloudwatch('JOB_COMPLETE', log_group_name, log_stream_name, ssm_id)
+                                return {
+                                    'statusCode': 200,
+                                    'body': {
+                                        'message': 'Python script executed successfully',
+                                        'stderr': process.stderr if process.stderr else None
+                                    }
+                                }
+                                
+                        except subprocess.CalledProcessError as e:
+                            raise Exception(f"Script execution failed: stdout={e.stdout}, stderr={e.stderr}")
+                        except Exception as e:
+                            write_to_cloudwatch(f'Error: {str(e)}', log_group_name, log_stream_name, ssm_id)
+                            write_to_cloudwatch('JOB_FAILED', log_group_name, log_stream_name, ssm_id)
+                            raise
+                        finally:
+                            # Cleanup
+                            if os.path.exists(local_zip):
+                                os.remove(local_zip)
+                            if os.path.exists(payload_file):
+                                os.remove(payload_file)
+                            if os.path.exists(extract_path):
+                                import shutil
+                                shutil.rmtree(extract_path)
+
+  SSMAdditionalAutomationRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub ${Application}-${Environment}-ssm-additional-automation-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - ssm.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        -
+          PolicyName: SSMDirectAutomationRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - 's3:PutObject'
+                  - 's3:GetObject'
+                  - 's3:GetObjectVersion'
+                  - 's3:ListBucket'
+                Resource:
+                  - !Sub "${SSMBucket.Arn}"
+                  - !Sub "${SSMBucket.Arn}/*"
+              -
+                Effect: Allow
+                Action:
+                  - 'ssm:DescribeInstanceInformation'
+                  - 'ssm:ListCommandInvocations'
+                  - 'ssm:ListCommands'
+                Resource: '*'
+              -
+                Effect: Allow
+                Action:
+                  - 'ssm:SendCommand'
+                Resource:
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:document/*'
+              - 
+                Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                  - 'logs:DescribeLogStreams'
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${RunCMFAutomationPackageSSMDocumentLogGroup}:*"
+
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W11
+            reason: "The resources ARN is unknown, because it is depends on user input"
+          - id: W28
+            reason: "Replacement of this resource is not required, and explicit name of this resource is easy for user to identify"
+
+
+Outputs:
+  EventBusArn:
+    Value: !GetAtt MigrationFactoryEventBus.Arn
+
+  EventBusName:
+    Value: !Ref MigrationFactoryEventBus
+
+  LambdaFunctionTemplateExportImportArn:
+    Value: !GetAtt LambdaFunctionTemplateExportImport.Arn
+
+  LambdaFunctionSSMArn:
+    Value: !GetAtt LambdaFunctionSSM.Arn
+
+  LambdaFunctionSSMScriptsArn:
+    Value: !GetAtt LambdaFunctionSSMScripts.Arn
+
+  LambdaFunctionSSMJobsArn:
+    Value: !GetAtt LambdaFunctionSSMJobs.Arn
+
+  SSMSocketAPI:
+    Value: !If [ DeploymentPublic, !Ref SSMSocketAPI, PrivateNotDeployed]
+
+  AutomationServerIAMRole:
+    Description: 'Migration Automation Server IAM Role'
+    Value: !Ref AutomationServerRole
+
+  AutomationServerIAMPolicy:
+    Description: 'Migration Automation Server IAM Policy'
+    Value: !Select [1, !Split ["policy/", !Ref AutomationServerPolicy]]
+
+  AutomationServerInstanceProfile:
+    Description: 'Migration Automation Server Instance Profile'
+    Value: !Ref AutomationServerInsProfile
+
+  PipelineTemplatesTable:
+    Value: !Ref PipelineTemplatesTable
+
+  PipelineTemplatesTableArn:
+    Value: !GetAtt PipelineTemplatesTable.Arn
+
+  PipelineTemplateTasksTable:
+    Value: !Ref PipelineTemplateTasksTable
+
+  PipelineTemplateTasksTableArn:
+    Value: !GetAtt PipelineTemplateTasksTable.Arn
+
+  PipelinesTable:
+    Value: !Ref PipelinesTable
+
+  PipelinesTableArn:
+    Value: !GetAtt PipelinesTable.Arn
+
+  PipelinesTableStreamArn:
+    Value: !GetAtt PipelinesTable.StreamArn
+
+  TaskExecutionsTable:
+    Value: !Ref TaskExecutionsTable
+
+  TaskExecutionsTableArn:
+    Value: !GetAtt TaskExecutionsTable.Arn
+
+  TaskExecutionsTableStreamArn:
+    Value: !GetAtt TaskExecutionsTable.StreamArn
+
+  ScriptsTable:
+      Value: !Ref SSMScriptsTable
+
+  ScriptsTableArn:
+    Value: !GetAtt SSMScriptsTable.Arn
+
+  AdditionalAutomationTargetSSMDocument:
+    Value: !Ref AdditionalAutomationTargetSSMDocument

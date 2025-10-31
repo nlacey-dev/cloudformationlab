@@ -1,0 +1,4028 @@
+[
+  {
+    "schema_name": {
+      "S": "wave"
+    },
+    "schema_type": {
+      "S": "user"
+    },
+    "attributes": {
+      "L": [
+        {
+          "M": {
+            "description": {
+              "S": "Wave Id"
+            },
+            "hidden": {
+              "BOOL": true
+            },
+            "name": {
+              "S": "wave_id"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Wave Name"
+            },
+            "name": {
+              "S": "wave_name"
+            },
+            "type": {
+              "S": "string"
+            },
+            "validation_regex": {
+              "S": "^(?!\\s*$).{1,150}$"
+            },
+            "group_order": {
+              "S": "-1000"
+            },
+            "validation_regex_msg": {
+              "S": "Wave name must be specified, and be a maximum of 150 characters."
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Wave Status"
+            },
+            "name": {
+              "S": "wave_status"
+            },
+            "listvalue": {
+              "S": "Not started,Planning,In progress,Completed,Blocked"
+            },
+            "type": {
+              "S": "list"
+            },
+            "group_order": {
+              "S": "-999"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Wave Start Time"
+            },
+            "name": {
+              "S": "wave_start_time"
+            },
+            "type": {
+              "S": "date"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Wave End Time"
+            },
+            "name": {
+              "S": "wave_end_time"
+            },
+            "type": {
+              "S": "date"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Baseline server capacity"
+            },
+            "name": {
+              "S": "wave_servers_baseline"
+            },
+            "type": {
+              "S": "string"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Forecasted servers"
+            },
+            "name": {
+              "S": "wave_servers_forecast"
+            },
+            "type": {
+              "S": "string"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Baseline application capacity"
+            },
+            "name": {
+              "S": "wave_apps_baseline"
+            },
+            "type": {
+              "S": "string"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Forecasted apps"
+            },
+            "name": {
+              "S": "wave_apps_forecast"
+            },
+            "type": {
+              "S": "string"
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "schema_name": {
+      "S": "app"
+    },
+    "schema_type": {
+      "S": "user"
+    },
+    "attributes": {
+      "L": [
+        {
+          "M": {
+            "description": {
+              "S": "Application Id"
+            },
+            "hidden": {
+              "BOOL": true
+            },
+            "name": {
+              "S": "app_id"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Application Name"
+            },
+            "name": {
+              "S": "app_name"
+            },
+            "type": {
+              "S": "string"
+            },
+            "validation_regex": {
+              "S": "^(?!\\s*$).{1,255}$"
+            },
+            "validation_regex_msg": {
+              "S": "Application name must be specified, and be a maximum of 255 characters."
+            },
+            "group_order": {
+              "S": "-1000"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Wave Id"
+            },
+            "name": {
+              "S": "wave_id"
+            },
+            "type": {
+              "S": "relationship"
+            },
+            "group_order": {
+              "S": "-999"
+            },
+            "required": {
+              "BOOL": false
+            },
+            "system": {
+              "BOOL": true
+            },
+            "rel_display_attribute": {
+              "S": "wave_name"
+            },
+            "rel_entity": {
+              "S": "wave"
+            },
+            "rel_key": {
+              "S": "wave_id"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "AWS Account Id"
+            },
+            "listvalue": {
+              "S": "111122223333,222233334444"
+            },
+            "name": {
+              "S": "aws_accountid"
+            },
+            "type": {
+              "S": "list"
+            },
+            "validation_regex": {
+              "S": "^\\d{12}$"
+            },
+            "validation_regex_msg": {
+              "S": "Invalid AWS account Id."
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            },
+            "group": {
+              "S": "Target"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "AWS Region"
+            },
+            "name": {
+              "S": "aws_region"
+            },
+            "type": {
+              "S": "list"
+            },
+            "listvalue": {
+              "S": "us-east-2,us-east-1,us-west-1,us-west-2,af-south-1,ap-east-1,ap-southeast-3,ap-south-1,ap-northeast-3,ap-northeast-2,ap-southeast-1,ap-southeast-2,ap-northeast-1,ca-central-1,cn-north-1,cn-northwest-1,eu-central-1,eu-west-1,eu-west-2,eu-south-1,eu-west-3,eu-north-1,me-south-1,sa-east-1"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            },
+            "group": {
+              "S": "Target"
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "schema_name": {
+      "S": "server"
+    },
+    "schema_type": {
+      "S": "user"
+    },
+    "attributes": {
+      "L": [
+        {
+          "M": {
+            "system": {
+              "BOOL": true
+            },
+            "description": {
+              "S": "Automation secret name override"
+            },
+            "long_desc": {
+              "S": "Any automation job where credentials are required to access this server will retrieve them from the secret name chosen, otherwise it will use the secret name as provided in the job parameters. This allows you to provide individual credentials for a specific server(s) in a job."
+            },
+            "group": {
+              "S": "Migration Automation"
+            },
+            "name": {
+              "S": "secret_name"
+            },
+            "rel_additional_attributes": {
+              "L": [
+                {
+                  "S": "Name"
+                }
+              ]
+            },
+            "rel_bypass_validation": {
+              "BOOL": true
+            },
+            "rel_display_attribute": {
+              "S": "Name"
+            },
+            "rel_entity": {
+              "S": "secret"
+            },
+            "rel_key": {
+              "S": "Name"
+            },
+            "type": {
+              "S": "relationship"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Server Id"
+            },
+            "hidden": {
+              "BOOL": true
+            },
+            "name": {
+              "S": "server_id"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Application"
+            },
+            "name": {
+              "S": "app_id"
+            },
+            "type": {
+              "S": "relationship"
+            },
+            "rel_display_attribute": {
+              "S": "app_name"
+            },
+            "rel_entity": {
+              "S": "application"
+            },
+            "rel_key": {
+              "S": "app_id"
+            },
+            "group_order": {
+              "S": "-998"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Server Name"
+            },
+            "name": {
+              "S": "server_name"
+            },
+            "type": {
+              "S": "string"
+            },
+            "validation_regex": {
+              "S": "^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-]*[A-Za-z0-9])$"
+            },
+            "validation_regex_msg": {
+              "S": "Server names must contain only alphanumeric, hyphen or period characters."
+            },
+            "group_order": {
+              "S": "-1000"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Server OS Family"
+            },
+            "listvalue": {
+              "S": "windows,linux"
+            },
+            "name": {
+              "S": "server_os_family"
+            },
+            "type": {
+              "S": "list"
+            },
+            "validation_regex": {
+              "S": "^(?!\\s*$).+"
+            },
+            "validation_regex_msg": {
+              "S": "Select a valid operating system."
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Server OS Version"
+            },
+            "name": {
+              "S": "server_os_version"
+            },
+            "type": {
+              "S": "string"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Server FQDN"
+            },
+            "name": {
+              "S": "server_fqdn"
+            },
+            "type": {
+              "S": "string"
+            },
+            "validation_regex": {
+              "S": "^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-]*[A-Za-z0-9])$"
+            },
+            "validation_regex_msg": {
+              "S": "Server FQDN must contain only aplhanumeric, hyphen or period charaters."
+            },
+            "group_order": {
+              "S": "-999"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Server Tier"
+            },
+            "name": {
+              "S": "server_tier"
+            },
+            "type": {
+              "S": "string"
+            },
+            "system": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Server Environment"
+            },
+            "name": {
+              "S": "server_environment"
+            },
+            "type": {
+              "S": "string"
+            },
+            "group_order": {
+              "S": "-997"
+            },
+            "system": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Subnet Ids"
+            },
+            "name": {
+              "S": "subnet_IDs"
+            },
+            "type": {
+              "S": "multivalue-string"
+            },
+            "validation_regex": {
+              "S": "^(subnet-([a-z0-9]{8}|[a-z0-9]{17})$)"
+            },
+            "validation_regex_msg": {
+              "S": "Subnets must start with subnet-, followed by 8 or 17 alphanumeric characters."
+            },
+            "group": {
+              "S": "Target - Networking"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "conditions": {
+              "M": {
+                "queries": {
+                  "L": [
+                    {
+                      "M": {
+                        "comparator": {
+                          "S": "!empty"
+                        },
+                        "attribute": {
+                          "S": "network_interface_id"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "outcomes": {
+                  "M": {
+                    "true": {
+                      "L": [
+                        {
+                          "S": "hidden"
+                        }
+                      ]
+                    },
+                    "false": {
+                      "L": [
+                        {
+                          "S": "not_required"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Security Group Ids"
+            },
+            "name": {
+              "S": "securitygroup_IDs"
+            },
+            "type": {
+              "S": "multivalue-string"
+            },
+            "validation_regex": {
+              "S": "^(sg-([a-z0-9]{8}|[a-z0-9]{17})$)"
+            },
+            "validation_regex_msg": {
+              "S": "Security groups must start with sg-, followed by 8 or 17 alphanumeric characters."
+            },
+            "group": {
+              "S": "Target - Networking"
+            },
+            "system": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Subnet Ids - Test"
+            },
+            "name": {
+              "S": "subnet_IDs_test"
+            },
+            "type": {
+              "S": "multivalue-string"
+            },
+            "validation_regex": {
+              "S": "^(subnet-([a-z0-9]{8}|[a-z0-9]{17})$)"
+            },
+            "validation_regex_msg": {
+              "S": "Subnets must start with subnet-, followed by 8 or 17 alphanumeric characters."
+            },
+            "group": {
+              "S": "Target - Networking"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "conditions": {
+              "M": {
+                "queries": {
+                  "L": [
+                    {
+                      "M": {
+                        "comparator": {
+                          "S": "!empty"
+                        },
+                        "attribute": {
+                          "S": "network_interface_id_test"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "outcomes": {
+                  "M": {
+                    "true": {
+                      "L": [
+                        {
+                          "S": "hidden"
+                        }
+                      ]
+                    },
+                    "false": {
+                      "L": [
+                        {
+                          "S": "not_required"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Security Group Ids - Test"
+            },
+            "name": {
+              "S": "securitygroup_IDs_test"
+            },
+            "type": {
+              "S": "multivalue-string"
+            },
+            "validation_regex": {
+              "S": "^(sg-([a-z0-9]{8}|[a-z0-9]{17})$)"
+            },
+            "validation_regex_msg": {
+              "S": "Security groups must start with sg-, followed by 8 or 17 alphanumeric characters."
+            },
+            "group": {
+              "S": "Target - Networking"
+            },
+            "system": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Target EC2 Instance Id"
+            },
+            "name": {
+              "S": "target_instance_id"
+            },
+            "type": {
+              "S": "string"
+            },
+            "validation_regex": {
+              "S": "^(i-([a-z0-9]{8}|[a-z0-9]{17})$)"
+            },
+            "validation_regex_msg": {
+              "S": "EC2 Instance ID must start with i- followed by 8 or 17 alphanumeric characters."
+            },
+            "group": {
+              "S": "Target - Instance"
+            },
+            "system": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Secondary IP addresses"
+            },
+            "name": {
+              "S": "secondary_private_ip"
+            },
+            "type": {
+              "S": "multivalue-string"
+            },
+            "validation_regex": {
+              "S": "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\\.|$)){4}"
+            },
+            "validation_regex_msg": {
+              "S": "A valid IPv4 IP addresses must be provided."
+            },
+            "group": {
+              "S": "Target - Networking"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "group_order": {
+              "S": "4"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Instance Type"
+            },
+            "name": {
+              "S": "instanceType"
+            },
+            "type": {
+              "S": "string"
+            },
+            "group": {
+              "S": "Target - Instance"
+            },
+            "system": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "EC2 Instance Profile Name"
+            },
+            "name": {
+              "S": "iamRole"
+            },
+            "type": {
+              "S": "string"
+            },
+            "group": {
+              "S": "Target - Instance"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "Verify that the value entered here is the Instance Profile name not the IAM Role name, they maybe different. If you use the AWS CLI, API, or an AWS SDK to create a role, you create the role and instance profile as separate actions, with potentially different names."
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Private IP"
+            },
+            "name": {
+              "S": "private_ip"
+            },
+            "type": {
+              "S": "string"
+            },
+            "group": {
+              "S": "Target - Networking"
+            },
+            "group_order": {
+              "S": "3"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "validation_regex": {
+              "S": "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\\.|$)){4}"
+            },
+            "validation_regex_msg": {
+              "S": "A valid IPv4 IP address must be provided."
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Tags"
+            },
+            "name": {
+              "S": "tags"
+            },
+            "type": {
+              "S": "tag"
+            },
+            "group": {
+              "S": "Target - Instance"
+            },
+            "system": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Tenancy"
+            },
+            "listvalue": {
+              "S": "Shared,Dedicated,Dedicated host"
+            },
+            "name": {
+              "S": "tenancy"
+            },
+            "type": {
+              "S": "list"
+            },
+            "group": {
+              "S": "Target - Instance"
+            },
+            "system": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Migration Status"
+            },
+            "name": {
+              "S": "migration_status"
+            },
+            "type": {
+              "S": "string"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "group": {
+              "S": "Status"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Replication Status"
+            },
+            "name": {
+              "S": "replication_status"
+            },
+            "type": {
+              "S": "string"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "group": {
+              "S": "Status"
+            },
+            "conditions": {
+              "M": {
+                "queries": {
+                  "L": [
+                    {
+                      "M": {
+                        "comparator": {
+                          "S": "!="
+                        },
+                        "value": {
+                          "S": "Rehost"
+                        },
+                        "attribute": {
+                          "S": "r_type"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "outcomes": {
+                  "M": {
+                    "true": {
+                      "L": [
+                        {
+                          "S": "hidden"
+                        }
+                      ]
+                    },
+                    "false": {
+                      "L": [
+                        {
+                          "S": "not_required"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Migration Strategy"
+            },
+            "listvalue": {
+              "S": "Retire,Retain,Relocate,Rehost,Repurchase,Replatform,Rearchitect,TBC"
+            },
+            "name": {
+              "S": "r_type"
+            },
+            "type": {
+              "S": "list"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "required": {
+              "BOOL": true
+            },
+            "help_content": {
+              "M": {
+                "header": {
+                  "S": "Migration Strategy"
+                },
+                "content_html": {
+                  "S": "The following Migration Strategies are commonly used in Cloud Migration projects.  The AWS Cloud Migration factory solution supports the automation activities to assist with these strategies, for Rehost and Replatform prepackaged automations are provided, and for other strategies customized automations can be created and imported into the AWS CMF solution:\n<ul>\n<li><b>Retire</b> - Server retired and not migrated, data will need to be removed and any software services decommissioned.</li>\n<li><b>Retain</b> - Server will remain on-premise , assessment should be preformed to verify any changes for migrating dependent services.</li>\n<li><b>Relocate</b> - VMware virtual machine on-premise, is due to be relocated to VMware Cloud on AWS, using VMware HCX. Currently AWS CMF does not natively support this capability, although custom automation script packages coudl be used to interface with this service.</li>\n<li><b>Rehost</b> - AWS Cloud Migration Factory supports native integration with AWS MGN, selecting this strategy will enable the options in the server UI to support specifying the required parameters to migrate a server instance to EC2 using block level replication. The AWS CMF Solution comes packaged will all the required automation scripts to support the standard tasks required to migrate a server, all of which can be initiated from the CMF web interface.</li>\n<li><b>Repurchase</b> - Service that the server is currently supporting will be replaced with another service.</li>\n<li><b>Replatform</b> - AWS Cloud Migration Factory supports native integration to create Cloud Formation templates for each application in a wave, these Cloud Formation template are automatically generated through the UI based on the properties of the servers defined here, and can then be deployed to any account that has had the target AWS CMF Solution CFT deployed.</li>\n<li><b>Reachitect</b> - Service will be rebuilt from other services in the AWS Cloud.</li>\n</ul>\n"
+                }
+              }
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Dedicated Host ID"
+            },
+            "name": {
+              "S": "dedicated_host_id"
+            },
+            "type": {
+              "S": "string"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "group": {
+              "S": "Target - Instance"
+            },
+            "validation_regex": {
+              "S": "^(h-([a-z0-9]{8}|[a-z0-9]{17})$)"
+            },
+            "validation_regex_msg": {
+              "S": "Dedicated Host IDs must start with h-, followed by 8 or 17 alphanumeric characters."
+            },
+            "conditions": {
+              "M": {
+                "outcomes": {
+                  "M": {
+                    "true": {
+                      "L": [
+                        {
+                          "S": "required"
+                        }
+                      ]
+                    },
+                    "false": {
+                      "L": [
+                        {
+                          "S": "not_required"
+                        },
+                        {
+                          "S": "hidden"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "queries": {
+                  "L": [
+                    {
+                      "M": {
+                        "comparator": {
+                          "S": "="
+                        },
+                        "value": {
+                          "S": "Dedicated host"
+                        },
+                        "attribute": {
+                          "S": "tenancy"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Network Interface ID"
+            },
+            "name": {
+              "S": "network_interface_id"
+            },
+            "type": {
+              "S": "string"
+            },
+            "validation_regex": {
+              "S": "^(eni-([a-z0-9]{8}|[a-z0-9]{17})$)"
+            },
+            "validation_regex_msg": {
+              "S": "Network Interface ID must start with eni- followed by 8 or 17 alphanumeric characters."
+            },
+            "system": {
+              "BOOL": true
+            },
+            "group": {
+              "S": "Target - Networking"
+            },
+            "group_order": {
+              "S": "1"
+            },
+            "help_content": {
+              "M": {
+                "header": {
+                  "S": "Network Interface ID"
+                },
+                "content_html": {
+                  "S": "If Network Interface ID is provided you cannot set Subnet IDs, as the instance will be launched with this Network Interface ID.\n\nThis Network Interface ID will be assigned to the migrating server."
+                }
+              }
+            },
+            "conditions": {
+              "M": {
+                "queries": {
+                  "L": [
+                    {
+                      "M": {
+                        "comparator": {
+                          "S": "!empty"
+                        },
+                        "attribute": {
+                          "S": "subnet_IDs"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "outcomes": {
+                  "M": {
+                    "true": {
+                      "L": [
+                        {
+                          "S": "hidden"
+                        }
+                      ]
+                    },
+                    "false": {
+                      "L": [
+                        {
+                          "S": "not_required"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Network Interface ID - Test"
+            },
+            "name": {
+              "S": "network_interface_id_test"
+            },
+            "type": {
+              "S": "string"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "group": {
+              "S": "Target - Networking"
+            },
+            "group_order": {
+              "S": "2"
+            },
+            "validation_regex": {
+              "S": "^(eni-([a-z0-9]{8}|[a-z0-9]{17})$)"
+            },
+            "validation_regex_msg": {
+              "S": "Network Interface ID must start with eni- followed by 8 or 17 alphanumeric characters."
+            },
+            "help_content": {
+              "M": {
+                "header": {
+                  "S": "Network Interface ID - Test"
+                },
+                "content_html": {
+                  "S": "If 'Network Interface ID -Test' is provided you cannot set 'Subnet IDs - Test', as the instance will be launched with this Network Interface ID.\n\nThis Network Interface ID will be assigned to the migrating server."
+                }
+              }
+            },
+            "conditions": {
+              "M": {
+                "queries": {
+                  "L": [
+                    {
+                      "M": {
+                        "comparator": {
+                          "S": "!empty"
+                        },
+                        "attribute": {
+                          "S": "subnet_IDs_test"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "outcomes": {
+                  "M": {
+                    "true": {
+                      "L": [
+                        {
+                          "S": "hidden"
+                        }
+                      ]
+                    },
+                    "false": {
+                      "L": [
+                        {
+                          "S": "not_required"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "M": {
+            "conditions": {
+              "M": {
+                "outcomes": {
+                  "M": {
+                    "true": {
+                      "L": [
+                        {
+                          "S": "hidden"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "queries": {
+                  "L": [
+                    {
+                      "M": {
+                        "attribute": {
+                          "S": "r_type"
+                        },
+                        "comparator": {
+                          "S": "!="
+                        },
+                        "value": {
+                          "S": "Rehost"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": {
+              "S": "MGN Post launch actions"
+            },
+            "group": {
+              "S": "Migration Automation"
+            },
+            "group_order": {
+              "S": "2"
+            },
+            "name": {
+              "S": "server_mgn_post_launch"
+            },
+            "type": {
+              "S": "json"
+            },
+            "help_content": {
+              "M": {
+                "content_html": {
+                  "S": "To define the MGN Post Launch actions you should follow the 'Request Syntax' provided in the <a href=\"https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/mgn/client/put_source_server_action.html\"> AWS MGN API boto3 guidance</a>, with the following changes:\n<ul>\n    <li>The top level should be a JSON array of actions. starting with a opening square bracket and the last character being a closing square bracket. </il>\n    <li>There is no need to include actionID, this will create automatically.</li>\n    <li>For parameters, you should use the format:\n        <code>\n        \"parameters\": {\n            \"para1\": false,\n            \"para2\": 30,\n            \"para3\": \"m5.4xlarge\",\n        }\n        </code>\n    </li>\n</ul>\nExample of a single action definition:\n<code>\n    [\n        {\n            \"actionName\": \"MyAction\",\n            \"active\": true,\n            \"category\": \"OTHER\",\n            \"description\": \"Description of the action.\",\n            \"documentIdentifier\": \"Document-Name\",\n            \"documentVersion\": \"$DEFAULT\",\n            \"externalParameters\": {\n            \"InstanceId\": {\n                \"dynamicPath\": \"ec2.InstanceId\"\n            }\n            },\n            \"mustSucceedForCutover\": false,\n            \"order\": 1005,\n            \"parameters\": {\n                \"para1\": false,\n                \"para2\": 30,\n                \"para3\": \"m5.4xlarge\"\n            }\n        }\n    ]\n</code>"
+                }
+              }
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Encrypt EBS volumes"
+            },
+            "long_desc": {
+              "S": "WARNING: Changing this setting after MGN replication has been started will result in a complete resync of data from the source server."
+            },
+            "name": {
+              "S": "ebs_encrypted"
+            },
+            "type": {
+              "S": "checkbox"
+            },
+            "required": {
+              "BOOL": false
+            },
+            "system": {
+              "BOOL": true
+            },
+            "group": {
+              "S": "Target - Storage"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "EBS KMS Key Id or ARN for Volume Encryption"
+            },
+            "long_desc": {
+              "S": "WARNING: Changing this setting after MGN replication has been started will result in a complete resync of data from the source server."
+            },
+            "name": {
+              "S": "ebs_kms_key_id"
+            },
+            "type": {
+              "S": "string"
+            },
+            "required": {
+              "BOOL": false
+            },
+            "system": {
+              "BOOL": true
+            },
+            "group": {
+              "S": "Target - Storage"
+            },
+            "validation_regex": {
+              "S": "^(arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key/){0,1}([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}|mrk-[a-f0-9]{32})$"
+            },
+            "validation_regex_msg": {
+              "S": "Provide a valid KMS Key or ARN."
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "schema_name": {
+      "S": "database"
+    },
+    "schema_type": {
+      "S": "user"
+    },
+    "attributes": {
+      "L": [
+        {
+          "M": {
+            "description": {
+              "S": "Database Id"
+            },
+            "hidden": {
+              "BOOL": true
+            },
+            "name": {
+              "S": "database_id"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Application"
+            },
+            "name": {
+              "S": "app_id"
+            },
+            "type": {
+              "S": "relationship"
+            },
+            "rel_display_attribute": {
+              "S": "app_name"
+            },
+            "rel_entity": {
+              "S": "application"
+            },
+            "rel_key": {
+              "S": "app_id"
+            },
+            "group_order": {
+              "S": "-998"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Database Name"
+            },
+            "name": {
+              "S": "database_name"
+            },
+            "type": {
+              "S": "string"
+            },
+            "group_order": {
+              "S": "-1000"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            },
+            "validation_regex": {
+              "S": "^(?!\\s*$).{1,255}$"
+            },
+            "validation_regex_msg": {
+              "S": "Database name must be specified, and be a maximum of 255 characters."
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Migration Strategy"
+            },
+            "listvalue": {
+              "S": "Retire,Retain,Relocate,Rehost,Repurchase,Replatform,Rearchitect,TBC"
+            },
+            "name": {
+              "S": "r_type"
+            },
+            "type": {
+              "S": "list"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "required": {
+              "BOOL": false
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Database Type"
+            },
+            "listvalue": {
+              "S": "oracle,mssql,db2,mysql,postgresql"
+            },
+            "name": {
+              "S": "database_type"
+            },
+            "type": {
+              "S": "list"
+            },
+            "validation_regex": {
+              "S": "^(?!\\s*$).+"
+            },
+            "validation_regex_msg": {
+              "S": "Select a valid database type."
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "schema_name": {
+      "S": "pipeline_template"
+    },
+    "schema_type": {
+      "S": "user"
+    },
+    "attributes": {
+      "L": [
+        {
+          "M": {
+            "description": {
+              "S": "Pipeline Template Id"
+            },
+            "hidden": {
+              "BOOL": true
+            },
+            "name": {
+              "S": "pipeline_template_id"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Pipeline Version"
+            },
+            "hidden": {
+              "BOOL": true
+            },
+            "name": {
+              "S": "version"
+            },
+            "required": {
+              "BOOL": false
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Pipeline Template Name"
+            },
+            "name": {
+              "S": "pipeline_template_name"
+            },
+            "type": {
+              "S": "string"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            },
+            "group_order": {
+              "S": "1"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Pipeline Template Description"
+            },
+            "name": {
+              "S": "pipeline_template_description"
+            },
+            "type": {
+              "S": "string"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            },
+            "group_order": {
+              "S": "2"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Deletion Protection"
+            },
+            "name": {
+              "S": "deletion_protection"
+            },
+            "type": {
+              "S": "checkbox"
+            },
+            "required": {
+              "BOOL": false
+            },
+            "system": {
+              "BOOL": true
+            },
+            "hidden": {
+              "BOOL": true
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "schema_name": {
+      "S": "pipeline_template_task"
+    },
+    "key_type": {
+      "S": "uuid"
+    },
+    "allow_duplicates": {
+      "BOOL": true
+    },
+    "attributes": {
+      "L": [
+        {
+          "M": {
+            "description": {
+              "S": "Pipeline Template Task ID"
+            },
+            "hidden": {
+              "BOOL": true
+            },
+            "name": {
+              "S": "pipeline_template_task_id"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Pipeline Template ID"
+            },
+            "hidden": {
+              "BOOL": true
+            },
+            "name": {
+              "S": "pipeline_template_id"
+            },
+            "rel_display_attribute": {
+              "S": "pipeline_template_name"
+            },
+            "rel_entity": {
+              "S": "pipeline_template"
+            },
+            "rel_key": {
+              "S": "pipeline_template_id"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "relationship"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Script"
+            },
+            "group_order": {
+              "S": "2"
+            },
+            "name": {
+              "S": "task_id"
+            },
+            "rel_additional_attributes": {
+              "L": [
+                {
+                  "S": "script_description"
+                },
+                {
+                  "S": "script_group"
+                },
+                {
+                  "S": "type"
+                }
+              ]
+            },
+            "rel_display_attribute": {
+              "S": "script_name"
+            },
+            "rel_entity": {
+              "S": "script"
+            },
+            "rel_key": {
+              "S": "package_uuid"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "relationship"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Script Version"
+            },
+            "group_order": {
+              "S": "3"
+            },
+            "name": {
+              "S": "task_version"
+            },
+            "validation_regex": {
+              "S": "^[0-9]+$"
+            },
+            "validation_regex_msg": {
+              "S": "Version must be a number"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Template Task Name"
+            },
+            "group_order": {
+              "S": "1"
+            },
+            "name": {
+              "S": "pipeline_template_task_name"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Task Successors"
+            },
+            "group_order": {
+              "S": "4"
+            },
+            "listMultiSelect": {
+              "BOOL": true
+            },
+            "name": {
+              "S": "task_successors"
+            },
+            "rel_display_attribute": {
+              "S": "pipeline_template_task_name"
+            },
+            "rel_entity": {
+              "S": "pipeline_template_task"
+            },
+            "rel_filter_attribute_name": {
+              "S": "pipeline_template_id"
+            },
+            "rel_key": {
+              "S": "pipeline_template_task_id"
+            },
+            "required": {
+              "BOOL": false
+            },
+            "source_filter_attribute_name": {
+              "S": "pipeline_template_id"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "relationship"
+            }
+          }
+        }
+      ]
+    },
+    "schema_type": {
+      "S": "system"
+    }
+  },
+  {
+    "schema_name": {
+      "S": "pipeline"
+    },
+    "schema_type": {
+      "S": "user"
+    },
+    "attributes": {
+      "L": [
+        {
+          "M": {
+            "description": {
+              "S": "Pipeline Id"
+            },
+            "hidden": {
+              "BOOL": true
+            },
+            "name": {
+              "S": "pipeline_id"
+            },
+            "type": {
+              "S": "string"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Pipeline Name"
+            },
+            "name": {
+              "S": "pipeline_name"
+            },
+            "type": {
+              "S": "string"
+            },
+            "group_order": {
+              "S": "1"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Enable Email Notifications"
+            },
+            "name": {
+              "S": "pipeline_enable_email_notifications"
+            },
+            "type": {
+              "S": "checkbox"
+            },
+            "group_order": {
+              "S": "1"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "default": {
+              "BOOL": false
+            }
+          }
+        },
+        {
+          "M": {
+            "name": {
+              "S": "task_level_email_settings"
+            },
+            "description": {
+              "S": "Task Level Email Notification Settings"
+            },
+            "type": {
+              "S": "embedded_entity"
+            },
+            "group": {
+              "S": "Email Notifications"
+            },
+            "group_order": {
+              "S": "5"
+            },
+            "required": {
+              "BOOL": false
+            },
+            "long_desc": {
+              "S": "Configure email recipients for each task in the pipeline"
+            },
+            "lookup": {
+              "S": "concat(pipeline_id, ':', task.task_id)"
+            },
+            "rel_display_attribute": {
+              "S": "task.task_name"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "listMultiSelect": {
+              "BOOL": true
+            },
+            "hidden": {
+              "BOOL": true
+            },
+            "embedded_schema": {
+              "M": {
+                "attributes": {
+                  "L": [
+                    {
+                      "M": {
+                        "name": {
+                          "S": "task_id"
+                        },
+                        "description": {
+                          "S": "Task ID"
+                        },
+                        "type": {
+                          "S": "relationship"
+                        },
+                        "rel_entity": {
+                          "S": "pipeline_template"
+                        },
+                        "rel_key": {
+                          "S": "pipeline_template_id"
+                        },
+                        "lookup": {
+                          "S": "concat(pipeline_id, ':', task.task_id)"
+                        },
+                        "rel_display_attribute": {
+                          "S": "task.task_name"
+                        },
+                        "required": {
+                          "BOOL": true
+                        }
+                      }
+                    },
+                    {
+                      "M": {
+                        "name": {
+                          "S": "email_users"
+                        },
+                        "description": {
+                          "S": "Email Users"
+                        },
+                        "type": {
+                          "S": "users"
+                        },
+                        "listMultiSelect": {
+                          "BOOL": true
+                        },
+                        "listValueAPI": {
+                          "S": "/admin/users"
+                        },
+                        "required": {
+                          "BOOL": false
+                        },
+                        "long_desc": {
+                          "S": "List of Cognito Users"
+                        }
+                      }
+                    },
+                    {
+                      "M": {
+                        "name": {
+                          "S": "email_groups"
+                        },
+                        "description": {
+                          "S": "Email Groups"
+                        },
+                        "type": {
+                          "S": "groups"
+                        },
+                        "listMultiSelect": {
+                          "BOOL": true
+                        },
+                        "listValueAPI": {
+                          "S": "/admin/groups"
+                        },
+                        "required": {
+                          "BOOL": false
+                        },
+                        "long_desc": {
+                          "S": "List of Cognito groups"
+                        }
+                      }
+                    },
+                    {
+                      "M": {
+                        "name": {
+                          "S": "email_body"
+                        },
+                        "description": {
+                          "S": "Email Body"
+                        },
+                        "type": {
+                          "S": "string"
+                        },
+                        "validation_regex": {
+                          "S": "^.{0,140}$"
+                        },
+                        "validation_regex_msg": {
+                          "S": "Email body must not exceed 140 characters"
+                        },
+                        "long_desc": {
+                          "S": "Email body text, maximum 140 characters"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }, 
+        {
+          "M": {
+            "listMultiSelect": {
+              "BOOL": true
+            },
+            "conditions": {
+              "M": {
+                "queries": {
+                  "L": [
+                    {
+                      "M": {
+                        "comparator": {
+                          "S": "="
+                        },
+                        "value": {
+                          "BOOL": true
+                        },
+                        "attribute": {
+                          "S": "pipeline_enable_email_notifications"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "outcomes": {
+                  "M": {
+                    "false": {
+                      "L": [
+                        {
+                          "S": "hidden"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "system": {
+              "BOOL": true
+            },
+            "group_order": {
+              "S": "1"
+            },
+            "name": {
+              "S": "pipeline_default_email_recipients"
+            },
+            "description": {
+              "S": "Default Email Recipients"
+            },
+            "type": {
+              "S": "users"
+            },
+            "listValueAPI": {
+              "S": "/admin/users"
+            },
+            "long_desc": {
+              "S": "List of Cognito Users"
+            }
+          }
+        },
+        {
+          "M": {
+            "listMultiSelect": {
+              "BOOL": true
+            },
+            "conditions": {
+              "M": {
+                "queries": {
+                  "L": [
+                    {
+                      "M": {
+                        "comparator": {
+                          "S": "="
+                        },
+                        "value": {
+                          "BOOL": true
+                        },
+                        "attribute": {
+                          "S": "pipeline_enable_email_notifications"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "outcomes": {
+                  "M": {
+                    "false": {
+                      "L": [
+                        {
+                          "S": "hidden"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "system": {
+              "BOOL": true
+            },
+            "name": {
+              "S": "pipeline_default_email_groups"
+            },
+            "description": {
+              "S": "Default Email Groups"
+            },
+            "group_order": {
+              "S": "1"
+            },
+            "type": {
+              "S": "groups"
+            },
+            "listValueAPI": {
+              "S": "/admin/groups"
+            },
+            "long_desc": {
+              "S": "List of Cognito user groups"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Pipeline Description"
+            },
+            "name": {
+              "S": "pipeline_description"
+            },
+            "type": {
+              "S": "string"
+            },
+            "group_order": {
+              "S": "2"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Pipeline Status"
+            },
+            "name": {
+              "S": "pipeline_status"
+            },
+            "type": {
+              "S": "status"
+            },
+            "group_order": {
+              "S": "3"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            },
+            "hiddenCreate": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Pipeline Template"
+            },
+            "name": {
+              "S": "pipeline_template_id"
+            },
+            "type": {
+              "S": "relationship"
+            },
+            "rel_display_attribute": {
+              "S": "pipeline_template_name"
+            },
+            "rel_entity": {
+              "S": "pipeline_template"
+            },
+            "rel_key": {
+              "S": "pipeline_template_id"
+            },
+            "group_order": {
+              "S": "4"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "lookup": {
+              "S": "task.package_uuid"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "rel_attribute": {
+              "S": "script_arguments"
+            },
+            "rel_key": {
+              "S": "package_uuid"
+            },
+            "name": {
+              "S": "task_arguments"
+            },
+            "description": {
+              "S": "Task Arguments"
+            },
+            "rel_entity": {
+              "S": "script"
+            },
+            "type": {
+              "S": "embedded_entity"
+            },
+            "required": {
+              "BOOL": false
+            },
+            "long_desc": {
+              "S": "Template Task Arguments"
+            },
+            "group_order": {
+              "S": "5"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Current Task ID"
+            },
+            "name": {
+              "S": "current_task_id"
+            },
+            "type": {
+              "S": "string"
+            },
+            "group_order": {
+              "S": "6"
+            },
+            "required": {
+              "BOOL": false
+            },
+            "system": {
+              "BOOL": true
+            },
+            "hiddenCreate": {
+              "BOOL": true
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "schema_name": {
+      "S": "secret"
+    },
+    "schema_type": {
+      "S": "system"
+    },
+    "attributes": {
+      "L": [
+        {
+          "M": {
+            "name": {
+              "S": "name"
+            },
+            "description": {
+              "S": "Secret Name"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            },
+            "long_desc": {
+              "S": "Secret name."
+            }
+          }
+        },
+        {
+          "M": {
+            "name": {
+              "S": "description"
+            },
+            "description": {
+              "S": "Secret Description"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            },
+            "long_desc": {
+              "S": "Secret description."
+            }
+          }
+        },
+        {
+          "M": {
+            "name": {
+              "S": "data.SECRET_TYPE"
+            },
+            "description": {
+              "S": "Secret Type"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            },
+            "long_desc": {
+              "S": "Secret Type."
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "schema_name": {
+      "S": "role"
+    },
+    "schema_type": {
+      "S": "system"
+    },
+    "attributes": {
+      "L": [
+        {
+          "M": {
+            "system": {
+              "BOOL": true
+            },
+            "name": {
+              "S": "role_name"
+            },
+            "description": {
+              "S": "Role Name"
+            },
+            "group_order": {
+              "N": "1"
+            },
+            "type": {
+              "S": "string"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "Role name"
+            }
+          }
+        },
+        {
+          "M": {
+            "system": {
+              "BOOL": true
+            },
+            "hidden": {
+              "BOOL": true
+            },
+            "name": {
+              "S": "role_id"
+            },
+            "description": {
+              "S": "Role Id"
+            },
+            "type": {
+              "S": "string"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "Role ID"
+            }
+          }
+        },
+        {
+          "M": {
+            "listMultiSelect": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            },
+            "name": {
+              "S": "groups"
+            },
+            "description": {
+              "S": "Groups"
+            },
+            "type": {
+              "S": "groups"
+            },
+            "listValueAPI": {
+              "S": "/admin/groups"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "Groups"
+            }
+          }
+        },
+        {
+          "M": {
+            "listMultiSelect": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            },
+            "rel_display_attribute": {
+              "S": "policy_name"
+            },
+            "rel_key": {
+              "S": "policy_id"
+            },
+            "name": {
+              "S": "policies"
+            },
+            "description": {
+              "S": "Attached Policies"
+            },
+            "rel_entity": {
+              "S": "policy"
+            },
+            "type": {
+              "S": "policies"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "Policies"
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "schema_name": {
+      "S": "user"
+    },
+    "schema_type": {
+      "S": "system"
+    },
+    "attributes": {
+      "L": [
+        {
+          "M": {
+            "system": {
+              "BOOL": true
+            },
+            "hidden": {
+              "BOOL": true
+            },
+            "name": {
+              "S": "userRef"
+            },
+            "description": {
+              "S": "User reference"
+            },
+            "type": {
+              "S": "string"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "User reference"
+            }
+          }
+        },
+        {
+          "M": {
+            "name": {
+              "S": "email"
+            },
+            "description": {
+              "S": "User Email address"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "User Email address"
+            }
+          }
+        },
+        {
+          "M": {
+            "name": {
+              "S": "enabled"
+            },
+            "description": {
+              "S": "User enabled"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "checkbox"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "User enabled"
+            }
+          }
+        },
+        {
+          "M": {
+            "name": {
+              "S": "status"
+            },
+            "description": {
+              "S": "User status"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "User status"
+            }
+          }
+        },
+        {
+          "M": {
+            "name": {
+              "S": "groups"
+            },
+            "description": {
+              "S": "User groups"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "groups"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "User groups"
+            }
+          }
+        },
+        {
+          "M": {
+            "name": {
+              "S": "mfaEnabled"
+            },
+            "description": {
+              "S": "User MFA enabled"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "checkbox"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "User MFA enabled"
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "schema_name": {
+      "S": "script"
+    },
+    "schema_type": {
+      "S": "system"
+    },
+    "attributes": {
+      "L": [
+        {
+          "M": {
+            "system": {
+              "BOOL": true
+            },
+            "validation_regex": {
+              "S": "^(?!\\s*$).+"
+            },
+            "name": {
+              "S": "script_name"
+            },
+            "description": {
+              "S": "Name"
+            },
+            "validation_regex_msg": {
+              "S": "Provide a name for this script."
+            },
+            "type": {
+              "S": "string"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "Script name."
+            }
+          }
+        },
+        {
+          "M": {
+            "system": {
+              "BOOL": true
+            },
+            "validation_regex": {
+              "S": "^(?!\\s*$).+"
+            },
+            "name": {
+              "S": "script_description"
+            },
+            "description": {
+              "S": "Description"
+            },
+            "validation_regex_msg": {
+              "S": "Provide a description of the outcome for this script."
+            },
+            "type": {
+              "S": "string"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "Script description."
+            }
+          }
+        },
+        {
+          "M": {
+            "system": {
+              "BOOL": true
+            },
+            "validation_regex": {
+              "S": "^(?!\\s*$).+"
+            },
+            "name": {
+              "S": "fileName"
+            },
+            "description": {
+              "S": "Filename"
+            },
+            "validation_regex_msg": {
+              "S": "Select a filename."
+            },
+            "type": {
+              "S": "string"
+            },
+            "long_desc": {
+              "S": "Script filename."
+            }
+          }
+        },
+        {
+          "M": {
+            "system": {
+              "BOOL": true
+            },
+            "validation_regex": {
+              "S": "^(?!\\s*$).+"
+            },
+            "name": {
+              "S": "path"
+            },
+            "description": {
+              "S": "Path"
+            },
+            "validation_regex_msg": {
+              "S": "Select a file path."
+            },
+            "type": {
+              "S": "string"
+            },
+            "long_desc": {
+              "S": "Script path."
+            }
+          }
+        },
+        {
+          "M": {
+            "system": {
+              "BOOL": true
+            },
+            "validation_regex": {
+              "S": "^(?!\\s*$).+"
+            },
+            "name": {
+              "S": "script_masterfile"
+            },
+            "description": {
+              "S": "Master filename"
+            },
+            "validation_regex_msg": {
+              "S": "Select a master filename path."
+            },
+            "type": {
+              "S": "string"
+            },
+            "long_desc": {
+              "S": "Script master filename."
+            }
+          }
+        },
+        {
+          "M": {
+            "name": {
+              "S": "package_uuid"
+            },
+            "description": {
+              "S": "UUID"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            },
+            "long_desc": {
+              "S": "Automation script UUID."
+            }
+          }
+        },
+        {
+          "M": {
+            "system": {
+              "BOOL": true
+            },
+            "readonly": {
+              "BOOL": true
+            },
+            "name": {
+              "S": "default"
+            },
+            "description": {
+              "S": "Default version"
+            },
+            "type": {
+              "S": "string"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "Default version."
+            }
+          }
+        },
+        {
+          "M": {
+            "system": {
+              "BOOL": true
+            },
+            "readonly": {
+              "BOOL": true
+            },
+            "name": {
+              "S": "latest"
+            },
+            "description": {
+              "S": "Latest version"
+            },
+            "type": {
+              "S": "string"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "Latest version."
+            }
+          }
+        },
+        {
+          "M": {
+            "system": {
+              "BOOL": true
+            },
+            "readonly": {
+              "BOOL": true
+            },
+            "name": {
+              "S": "script_group"
+            },
+            "description": {
+              "S": "Group"
+            },
+            "type": {
+              "S": "string"
+            },
+            "required": {
+              "BOOL": false
+            },
+            "long_desc": {
+              "S": "Group or category the script is linked to."
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Type"
+            },
+            "name": {
+              "S": "type"
+            },
+            "type": {
+              "S": "list"
+            },
+            "listvalue": {
+              "S": "Manual,Automated"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "required": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "name": {
+              "S": "compute_platform"
+            },
+            "description": {
+              "S": "Compute Platform"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            },
+            "long_desc": {
+              "S": "Compute Platform for use for the script."
+            }
+          }
+        },
+        {
+          "M": {
+            "name": {
+              "S": "lambda_function_name_suffix"
+            },
+            "description": {
+              "S": "Lambda Function Name Suffix"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            },
+            "long_desc": {
+              "S": "Lambda Function name suffix that should be specified if task_type is Automated. Final Lambda function call will be formatted {application}-{environment}-{lambda_function_name_suffix}."
+            },
+            "hidden": {
+              "BOOL": true
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "schema_name": {
+      "S": "task_execution"
+    },
+    "schema_type": {
+      "S": "system"
+    },
+    "attributes": {
+      "L": [
+        {
+          "M": {
+            "description": {
+              "S": "Task Execution ID"
+            },
+            "name": {
+              "S": "task_execution_id"
+            },
+            "type": {
+              "S": "string"
+            },
+            "hidden": {
+              "BOOL": true
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Task Execution Name"
+            },
+            "name": {
+              "S": "task_execution_name"
+            },
+            "type": {
+              "S": "string"
+            },
+            "hidden": {
+              "BOOL": true
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Task Successors"
+            },
+            "group_order": {
+              "S": "4"
+            },
+            "listMultiSelect": {
+              "BOOL": true
+            },
+            "name": {
+              "S": "task_successors"
+            },
+            "rel_display_attribute": {
+              "S": "task_execution_name"
+            },
+            "rel_entity": {
+              "S": "task_execution"
+            },
+            "rel_filter_attribute_name": {
+              "S": "task_execution_id"
+            },
+            "rel_key": {
+              "S": "task_execution_id"
+            },
+            "required": {
+              "BOOL": false
+            },
+            "source_filter_attribute_name": {
+              "S": "pipeline_id"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "relationship"
+            }
+          }
+        },
+        {
+          "M": {
+            "name": {
+              "S": "pipeline_id"
+            },
+            "description": {
+              "S": "Pipeline Name"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "relationship"
+            },
+            "rel_display_attribute": {
+              "S": "pipeline_name"
+            },
+            "rel_entity": {
+              "S": "pipeline"
+            },
+            "rel_key": {
+              "S": "pipeline_id"
+            },
+            "hidden": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Task Name"
+            },
+            "group_order": {
+              "S": "2"
+            },
+            "long_desc": {
+              "S": "Pipeline Task Name"
+            },
+            "name": {
+              "S": "task_id"
+            },
+            "rel_display_attribute": {
+              "S": "pipeline_template_task_name"
+            },
+            "rel_entity": {
+              "S": "pipeline_template_task"
+            },
+            "rel_key": {
+              "S": "task_id"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "relationship"
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Task Version"
+            },
+            "group_order": {
+              "S": "2"
+            },
+            "long_desc": {
+              "S": "Pipeline Task version"
+            },
+            "name": {
+              "S": "task_version"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            }
+          }
+        },
+        {
+          "M": {
+            "name": {
+              "S": "task_execution_status"
+            },
+            "description": {
+              "S": "Task Execution Status"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "required": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "status"
+            },
+            "group_order": {
+              "S": "5"
+            }
+          }
+        },
+        {
+          "M": {
+            "name": {
+              "S": "outputLastMessage"
+            },
+            "description": {
+              "S": "Last Message"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "Last Message."
+            },
+            "group_order": {
+              "S": "6"
+            }
+          }
+        },
+        {
+          "M": {
+            "name": {
+              "S": "output"
+            },
+            "description": {
+              "S": "Log Output"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "json"
+            },
+            "hidden": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "description": {
+              "S": "Task Execution Inputs"
+            },
+            "name": {
+              "S": "task_execution_inputs"
+            },
+            "type": {
+              "S": "json"
+            },
+            "hidden": {
+              "BOOL": true
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "schema_name": {
+      "S": "group"
+    },
+    "schema_type": {
+      "S": "system"
+    },
+    "attributes": {
+      "L": [
+        {
+          "M": {
+            "name": {
+              "S": "group_name"
+            },
+            "description": {
+              "S": "Group Name"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "Group name"
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "schema_name": {
+      "S": "policy"
+    },
+    "schema_type": {
+      "S": "system"
+    },
+    "attributes": {
+      "L": [
+        {
+          "M": {
+            "system": {
+              "BOOL": true
+            },
+            "name": {
+              "S": "policy_name"
+            },
+            "description": {
+              "S": "Policy Name"
+            },
+            "group_order": {
+              "N": "1"
+            },
+            "type": {
+              "S": "string"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "Policy name"
+            }
+          }
+        },
+        {
+          "M": {
+            "system": {
+              "BOOL": true
+            },
+            "hidden": {
+              "BOOL": true
+            },
+            "name": {
+              "S": "policy_id"
+            },
+            "description": {
+              "S": "Policy Id"
+            },
+            "type": {
+              "S": "string"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "Policy ID"
+            }
+          }
+        },
+        {
+          "M": {
+            "listMultiSelect": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            },
+            "name": {
+              "S": "entity_access"
+            },
+            "description": {
+              "S": "Access"
+            },
+            "type": {
+              "S": "policy"
+            },
+            "required": {
+              "BOOL": false
+            },
+            "long_desc": {
+              "S": "Access"
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "schema_name": {
+      "S": "mgn"
+    },
+    "schema_type": {
+      "S": "automation"
+    },
+    "friendly_name": {
+      "S": "MGN"
+    },
+    "attributes": {
+      "L": [
+        {
+          "M": {
+            "listMultiSelect": {
+              "BOOL": true
+            },
+            "rel_display_attribute": {
+              "S": "aws_accountid"
+            },
+            "hidden": {
+              "BOOL": true
+            },
+            "rel_key": {
+              "S": "aws_accountid"
+            },
+            "description": {
+              "S": "AWS account ID"
+            },
+            "rel_entity": {
+              "S": "application"
+            },
+            "type": {
+              "S": "relationship"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            },
+            "validation_regex": {
+              "S": "^(?!\\s*$).+"
+            },
+            "listvalue": {
+              "S": "All Accounts"
+            },
+            "name": {
+              "S": "accountid"
+            },
+            "validation_regex_msg": {
+              "S": "AWS account ID must be provided."
+            }
+          }
+        },
+        {
+          "M": {
+            "listMultiSelect": {
+              "BOOL": true
+            },
+            "rel_display_attribute": {
+              "S": "server_name"
+            },
+            "rel_key": {
+              "S": "server_id"
+            },
+            "source_filter_attribute_name": {
+              "S": "appidlist"
+            },
+            "description": {
+              "S": "Optional - Servers"
+            },
+            "long_desc": {
+              "S": "If not specified all servers for the selected applications are included, to target specific servers only select them here."
+            },
+            "rel_entity": {
+              "S": "server"
+            },
+            "type": {
+              "S": "relationship"
+            },
+            "required": {
+              "BOOL": false
+            },
+            "system": {
+              "BOOL": true
+            },
+            "name": {
+              "S": "server_ids"
+            },
+            "rel_filter_attribute_name": {
+              "S": "app_id"
+            },
+            "group_order": {
+              "S": "4"
+            }
+          }
+        },
+        {
+          "M": {
+            "listMultiSelect": {
+              "BOOL": true
+            },
+            "rel_display_attribute": {
+              "S": "app_name"
+            },
+            "rel_key": {
+              "S": "app_id"
+            },
+            "source_filter_attribute_name": {
+              "S": "waveid"
+            },
+            "description": {
+              "S": "Applications"
+            },
+            "rel_entity": {
+              "S": "application"
+            },
+            "type": {
+              "S": "relationship"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "system": {
+              "BOOL": true
+            },
+            "validation_regex": {
+              "S": "^(?!\\s*$).+"
+            },
+            "rel_additional_attributes": {
+              "L": [
+                {
+                  "S": "aws_accountid"
+                },
+                {
+                  "S": "aws_region"
+                }
+              ]
+            },
+            "name": {
+              "S": "appidlist"
+            },
+            "validation_regex_msg": {
+              "S": "At least one application must be provided."
+            },
+            "rel_filter_attribute_name": {
+              "S": "wave_id"
+            },
+            "group_order": {
+              "S": "3"
+            }
+          }
+        },
+        {
+          "M": {
+            "rel_display_attribute": {
+              "S": "wave_name"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "validation_regex": {
+              "S": "^(?!\\s*$).+"
+            },
+            "rel_key": {
+              "S": "wave_id"
+            },
+            "name": {
+              "S": "waveid"
+            },
+            "description": {
+              "S": "Wave"
+            },
+            "rel_entity": {
+              "S": "wave"
+            },
+            "validation_regex_msg": {
+              "S": "Wave must be provided."
+            },
+            "type": {
+              "S": "relationship"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "group_order": {
+              "S": "2"
+            }
+          }
+        },
+        {
+          "M": {
+            "system": {
+              "BOOL": true
+            },
+            "validation_regex": {
+              "S": "^(?!\\s*$).+"
+            },
+            "listvalue": {
+              "S": "Start replication,Stop replication,Pause replication,Resume replication,Validate Launch Template,Launch Test Instances,Mark as Ready for Cutover,Launch Cutover Instances,Finalize Cutover,- Revert to ready for testing,- Revert to ready for cutover,- Terminate Launched instances,- Disconnect from AWS,- Mark as archived"
+            },
+            "name": {
+              "S": "action"
+            },
+            "description": {
+              "S": "Action"
+            },
+            "validation_regex_msg": {
+              "S": "You must select an action to perform."
+            },
+            "type": {
+              "S": "list"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "group_order": {
+              "S": "1"
+            }
+          }
+        }
+      ]
+    },
+    "group": {
+      "S": "Rehost"
+    },
+    "description": {
+      "S": "MGN server migration"
+    },
+    "actions": {
+      "L": [
+        {
+          "M": {
+            "name": {
+              "S": "Submit"
+            },
+            "apiMethod": {
+              "S": "post"
+            },
+            "id": {
+              "S": "submit"
+            },
+            "awsuistyle": {
+              "S": "primary"
+            },
+            "apiPath": {
+              "S": "/mgn"
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "schema_name": {
+      "S": "ssm_job"
+    },
+    "schema_type": {
+      "S": "automation"
+    },
+    "friendly_name": {
+      "S": "Run Automation"
+    },
+    "attributes": {
+      "L": [
+        {
+          "M": {
+            "system": {
+              "BOOL": true
+            },
+            "validation_regex": {
+              "S": "^(?!\\s*$).+"
+            },
+            "name": {
+              "S": "jobname"
+            },
+            "description": {
+              "S": "Job Name"
+            },
+            "validation_regex_msg": {
+              "S": "Job name must be supplied."
+            },
+            "group_order": {
+              "S": "1"
+            },
+            "type": {
+              "S": "string"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "Job name."
+            }
+          }
+        },
+        {
+          "M": {
+            "rel_display_attribute": {
+              "S": "script_name"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "validation_regex": {
+              "S": "^(?!\\s*$).+"
+            },
+            "rel_key": {
+              "S": "package_uuid"
+            },
+            "name": {
+              "S": "script.package_uuid"
+            },
+            "description": {
+              "S": "Script Name"
+            },
+            "rel_entity": {
+              "S": "script"
+            },
+            "validation_regex_msg": {
+              "S": "Script name must be provided."
+            },
+            "group_order": {
+              "S": "3"
+            },
+            "type": {
+              "S": "relationship"
+            },
+            "required": {
+              "BOOL": true
+            }
+          }
+        },
+        {
+          "M": {
+            "lookup": {
+              "S": "script.package_uuid"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "rel_attribute": {
+              "S": "script_arguments"
+            },
+            "rel_key": {
+              "S": "package_uuid"
+            },
+            "name": {
+              "S": "script.script_arguments"
+            },
+            "description": {
+              "S": "Script Arguments"
+            },
+            "rel_entity": {
+              "S": "script"
+            },
+            "type": {
+              "S": "embedded_entity"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "Automation Script."
+            },
+            "group_order": {
+              "S": "4"
+            }
+          }
+        }
+      ]
+    },
+    "description": {
+      "S": "Run Automation"
+    },
+    "actions": {
+      "L": [
+        {
+          "M": {
+            "name": {
+              "S": "Submit Automation Job"
+            },
+            "apiMethod": {
+              "S": "post"
+            },
+            "id": {
+              "S": "submit"
+            },
+            "awsuistyle": {
+              "S": "primary"
+            },
+            "apiPath": {
+              "S": "/ssm"
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "schema_name": {
+      "S": "job"
+    },
+    "schema_type": {
+      "S": "automation"
+    },
+    "friendly_name": {
+      "S": "Job"
+    },
+    "attributes": {
+      "L": [
+        {
+          "M": {
+            "system": {
+              "BOOL": true
+            },
+            "hidden": {
+              "BOOL": true
+            },
+            "validation_regex": {
+              "S": "^(?!\\s*$).+"
+            },
+            "name": {
+              "S": "SSMId"
+            },
+            "description": {
+              "S": "SSMID"
+            },
+            "validation_regex_msg": {
+              "S": "CE token must be provided."
+            },
+            "type": {
+              "S": "string"
+            },
+            "long_desc": {
+              "S": "SSM Task ID [system generated]."
+            }
+          }
+        },
+        {
+          "M": {
+            "default": {
+              "S": "i-0de99e421ecf0fc2c"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "validation_regex": {
+              "S": "^(?!\\s*$).+"
+            },
+            "name": {
+              "S": "mi_id"
+            },
+            "description": {
+              "S": "SSM Instance ID"
+            },
+            "validation_regex_msg": {
+              "S": "MI must be supplied."
+            },
+            "type": {
+              "S": "string"
+            },
+            "long_desc": {
+              "S": "SSM Instance IDs. Only showing those with a tag defined of role=mf_automation"
+            }
+          }
+        },
+        {
+          "M": {
+            "system": {
+              "BOOL": true
+            },
+            "validation_regex": {
+              "S": "^(?!\\s*$).+"
+            },
+            "name": {
+              "S": "jobname"
+            },
+            "description": {
+              "S": "Job Name"
+            },
+            "validation_regex_msg": {
+              "S": "Job name must be supplied."
+            },
+            "type": {
+              "S": "string"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "Job name."
+            }
+          }
+        },
+        {
+          "M": {
+            "name": {
+              "S": "outputLastMessage"
+            },
+            "description": {
+              "S": "Last Message"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "Last Message."
+            }
+          }
+        },
+        {
+          "M": {
+            "lookup": {
+              "S": "script.package_uuid"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "rel_attribute": {
+              "S": "script_arguments"
+            },
+            "rel_key": {
+              "S": "package_uuid"
+            },
+            "name": {
+              "S": "script.script_arguments"
+            },
+            "description": {
+              "S": "Script Arguments"
+            },
+            "rel_entity": {
+              "S": "script"
+            },
+            "type": {
+              "S": "embedded_entity"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "Automation Script."
+            }
+          }
+        },
+        {
+          "M": {
+            "name": {
+              "S": "script.script_name"
+            },
+            "description": {
+              "S": "Script Name"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            },
+            "long_desc": {
+              "S": "Automation Script."
+            }
+          }
+        },
+        {
+          "M": {
+            "name": {
+              "S": "script.package_uuid"
+            },
+            "description": {
+              "S": "Script Package UUID"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            },
+            "long_desc": {
+              "S": "Automation Script UUID."
+            }
+          }
+        },
+        {
+          "M": {
+            "name": {
+              "S": "script.default"
+            },
+            "description": {
+              "S": "Script Version"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            },
+            "long_desc": {
+              "S": "Automation Script Version Run."
+            }
+          }
+        },
+        {
+          "M": {
+            "name": {
+              "S": "script.script_description"
+            },
+            "description": {
+              "S": "Script Description"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            },
+            "long_desc": {
+              "S": "Automation Script Description."
+            }
+          }
+        },
+        {
+          "M": {
+            "name": {
+              "S": "script.script_masterfile"
+            },
+            "description": {
+              "S": "Script FileName"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            },
+            "long_desc": {
+              "S": "Automation script file name."
+            }
+          }
+        },
+        {
+          "M": {
+            "name": {
+              "S": "status"
+            },
+            "description": {
+              "S": "Status"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "status"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "Job Status."
+            }
+          }
+        },
+        {
+          "M": {
+            "name": {
+              "S": "SSMAutomationExecutionId"
+            },
+            "description": {
+              "S": "SSM Execution ID"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            },
+            "required": {
+              "BOOL": true
+            },
+            "long_desc": {
+              "S": "SSM Execution ID."
+            }
+          }
+        },
+        {
+          "M": {
+            "name": {
+              "S": "uuid"
+            },
+            "description": {
+              "S": "Job ID"
+            },
+            "system": {
+              "BOOL": true
+            },
+            "type": {
+              "S": "string"
+            },
+            "long_desc": {
+              "S": "Migration Factory Job ID."
+            }
+          }
+        }
+      ]
+    },
+    "description": {
+      "S": "Automation"
+    },
+    "actions": {
+      "L": []
+    }
+  }
+]
