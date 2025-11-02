@@ -1,0 +1,15 @@
+{
+  "Parameters": {
+    "Application": "migration-factory",
+    "Environment": "prod",
+    "Tracker": "true",
+    "ReplatformEC2": "false",
+    "ServiceAccountEmail": "nate.lacey@me.com",
+    "DeploymentType": "Public with WAF",
+    "CognitoFederation": "false",
+    "WebURL": "",
+    "EndpointVPCId": "",
+    "PrivateEndpointSubnets": "",
+    "SourceCIDR": "104.190.182.238/32, 203.0.113.0/24"
+  }
+}
