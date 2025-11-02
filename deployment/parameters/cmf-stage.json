@@ -1,0 +1,15 @@
+{
+  "Parameters": {
+    "Application": "migration-factory",
+    "Environment": "stage",
+    "Tracker": "true",
+    "ReplatformEC2": "true",
+    "ServiceAccountEmail": "cmf-service-account-stage@example.com",
+    "DeploymentType": "Default (Public)",
+    "CognitoFederation": "false",
+    "WebURL": "",
+    "EndpointVPCId": "",
+    "PrivateEndpointSubnets": "",
+    "SourceCIDR": ""
+  }
+}
