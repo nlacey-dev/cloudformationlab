@@ -1,0 +1,62 @@
+name: Validate Workflow Dependencies
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - '.github/scripts/**'
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - '.github/workflows/**'
+      - '.github/scripts/**'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate common-functions.sh exists
+        shell: bash
+        run: |
+          if [[ ! -f ".github/scripts/common-functions.sh" ]]; then
+            echo "::error::Missing required file: .github/scripts/common-functions.sh"
+            echo "This file is required by the CMF deployment workflow."
+            exit 1
+          fi
+          
+          # Validate file is executable
+          if [[ ! -x ".github/scripts/common-functions.sh" ]]; then
+            echo "::warning::.github/scripts/common-functions.sh is not executable. Workflow will make it executable."
+          fi
+          
+          # Validate file has required functions
+          required_functions=("retry" "urlencode" "cfn_console_url" "s3_cp_with_encryption")
+          missing_funcs=()
+          
+          for func in "${required_functions[@]}"; do
+            if ! grep -q "^${func}()" ".github/scripts/common-functions.sh"; then
+              missing_funcs+=("$func")
+            fi
+          done
+          
+          if [[ ${#missing_funcs[@]} -gt 0 ]]; then
+            echo "::error::Missing required functions in common-functions.sh: ${missing_funcs[*]}"
+            exit 1
+          fi
+          
+          echo "✓ All required functions present in common-functions.sh"
+          
+          # Syntax check
+          if ! bash -n ".github/scripts/common-functions.sh"; then
+            echo "::error::Syntax error in common-functions.sh"
+            exit 1
+          fi
+          
+          echo "✓ Syntax validation passed"
+

@@ -1,0 +1,685 @@
+name: CMF Orchestration Build & Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      cmf_version:
+        description: "CMF tag or version folder (e.g. v4.5.1 or custom001)"
+        required: true
+        default: "v4.5.1"
+      solution_name:
+        description: "Solution name folder"
+        required: true
+        default: "cloud-migration-factory-on-aws"
+      stack_name:
+        description: "CloudFormation stack name for factory"
+        required: true
+        default: "cmf-orchestration"
+      region:
+        description: "AWS region to build and deploy CMF"
+        required: true
+        default: "us-east-1"
+      environment:
+        description: "Deployment environment"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - stage
+          - prod
+      use_changeset_review:
+        description: "Create CloudFormation change set for manual review"
+        required: false
+        default: false
+        type: boolean
+      owner:
+        description: "Business owner tag (optional)"
+        required: false
+      cost_center:
+        description: "Cost center tag (optional)"
+        required: false
+      compliance:
+        description: "Compliance tag (optional)"
+        required: false
+      kms_key_arn:
+        description: "KMS key ARN for S3 encryption (optional, defaults to AES256)"
+        required: false
+      enable_prod_stack_policy:
+        description: "Apply protective stack policy in production"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: cmf-deploy-${{ inputs.stack_name }}-${{ inputs.region }}
+  cancel-in-progress: false
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.environment == 'prod' && 120 || 60 }}
+    environment:
+      name: ${{ inputs.environment == 'prod' && 'production' || 'development' }}
+      url: https://console.aws.amazon.com/cloudformation/home?region=${{ inputs.region }}#/stacks/stackinfo?stackId=${{ inputs.stack_name }}
+    env:
+      SOLUTION_NAME: ${{ inputs.solution_name }}
+      CMF_VERSION: ${{ inputs.cmf_version }}
+      STACK_NAME: ${{ inputs.stack_name }}
+      TARGET_REGION: ${{ inputs.region }}
+      ENVIRONMENT: ${{ inputs.environment }}
+      OWNER_TAG: ${{ inputs.owner }}
+      COST_CENTER_TAG: ${{ inputs.cost_center }}
+      COMPLIANCE_TAG: ${{ inputs.compliance }}
+      KMS_KEY_ARN: ${{ inputs.kms_key_arn }}
+      ROLE_DEV: arn:aws:iam::${{ vars.ACCOUNT_DEV }}:role/GitHub-CMF-PipelineRole
+      ROLE_STAGE: arn:aws:iam::${{ vars.ACCOUNT_STAGE }}:role/GitHub-CMF-PipelineRole
+      ROLE_PROD: arn:aws:iam::${{ vars.ACCOUNT_PROD }}:role/GitHub-CMF-PipelineRole
+      ACCOUNT_DEV: ${{ vars.ACCOUNT_DEV }}
+      ACCOUNT_STAGE: ${{ vars.ACCOUNT_STAGE }}
+      ACCOUNT_PROD: ${{ vars.ACCOUNT_PROD }}
+      CLIENT_NAME: ${{ vars.CLIENT_NAME }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          submodules: true
+
+      - name: Validate repository configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "::group::Validating repository configuration"
+          missing=()
+          for var in ACCOUNT_DEV ACCOUNT_STAGE ACCOUNT_PROD; do
+            if [[ -z "${!var:-}" ]]; then
+              missing+=("$var")
+            else
+              echo "✓ $var configured"
+            fi
+          done
+          if (( ${#missing[@]} )); then
+            echo "::error::Missing required repository variables: ${missing[*]}"
+            exit 1
+          fi
+          echo "✓ All required repository variables present"
+          echo "::endgroup::"
+
+      - name: Print tool versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "::group::Tool versions"
+          echo "AWS CLI: $(aws --version 2>&1)"
+          echo "Node: $(node --version)"
+          echo "Python: $(python3 --version)"
+          if command -v jq >/dev/null 2>&1; then
+            echo "jq: $(jq --version)"
+          else
+            echo "jq: not installed"
+          fi
+          echo "Bash: $BASH_VERSION"
+          echo "Runner: ${RUNNER_OS:-unknown} ${RUNNER_ARCH:-unknown}"
+          echo "::endgroup::"
+
+      - name: Select parameter file
+        id: params
+        shell: bash
+        run: |
+          set -euo pipefail
+          PARAM_FILE="deployment/parameters/cmf-${ENVIRONMENT}.json"
+          if [[ ! -f "$PARAM_FILE" ]]; then
+            echo "::error::Missing environment-specific parameter file: $PARAM_FILE"
+            exit 1
+          fi
+          echo "param_file=$PARAM_FILE" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Parameter File::$PARAM_FILE"
+
+      - name: Validate parameter prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          PARAM_FILE="${{ steps.params.outputs.param_file }}"
+          PARAM_JSON=$(cat "$PARAM_FILE")
+
+          get_param() {
+            jq -r --arg key "$1" '
+              if type=="object" and has("Parameters") and (.Parameters[$key] != null) then .Parameters[$key]
+              elif type=="object" and (.[$key] != null) then .[$key]
+              elif type=="array" then (map(select(.ParameterKey == $key) | .ParameterValue) | first // "")
+              else ""
+              end' <<< "$PARAM_JSON"
+          }
+
+          SERVICE_EMAIL=$(get_param "ServiceAccountEmail")
+          if [[ -z "$SERVICE_EMAIL" || "$SERVICE_EMAIL" == "serviceaccount@yourdomain.com" ]]; then
+            echo "::error::ServiceAccountEmail must be provided and must not be the default placeholder"
+            exit 1
+          fi
+
+          DEPLOYMENT_TYPE=$(get_param "DeploymentType")
+          DEPLOYMENT_TYPE=${DEPLOYMENT_TYPE:-"Default (Public)"}
+          echo "Deployment type: $DEPLOYMENT_TYPE"
+
+          if [[ "$DEPLOYMENT_TYPE" == "Private" ]]; then
+            WEB_URL=$(get_param "WebURL")
+            VPC_ID=$(get_param "EndpointVPCId")
+            SUBNET_IDS=$(get_param "PrivateEndpointSubnets")
+            if [[ -z "$WEB_URL" || "$WEB_URL" == */ ]]; then
+              echo "::error::Private deployments require WebURL without trailing slash"
+              exit 1
+            fi
+            if [[ -z "$VPC_ID" ]]; then
+              echo "::error::Private deployments require EndpointVPCId"
+              exit 1
+            fi
+            if [[ -z "$SUBNET_IDS" ]]; then
+              echo "::error::Private deployments require PrivateEndpointSubnets (comma-separated)"
+              exit 1
+            fi
+            IFS=',' read -r -a subnet_array <<< "$SUBNET_IDS"
+            if (( ${#subnet_array[@]} < 2 )); then
+              echo "::error::Provide at least two subnet IDs for private deployments"
+              exit 1
+            fi
+          fi
+
+          if [[ "$DEPLOYMENT_TYPE" == "Public with WAF" ]]; then
+            SOURCE_CIDR=$(get_param "SourceCIDR")
+            if [[ -z "$SOURCE_CIDR" ]]; then
+              echo "::error::Public with WAF deployments require SourceCIDR values"
+              exit 1
+            fi
+            IFS=',' read -r -a cidr_array <<< "$SOURCE_CIDR"
+            if (( ${#cidr_array[@]} < 2 )); then
+              echo "::error::Provide at least two CIDR blocks for SourceCIDR"
+              exit 1
+            fi
+            for cidr in "${cidr_array[@]}"; do
+              cidr_trimmed="$(echo "$cidr" | xargs)"
+              if ! [[ $cidr_trimmed =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$ ]]; then
+                echo "::warning::SourceCIDR entry '$cidr_trimmed' does not match CIDR syntax"
+              fi
+            done
+          fi
+
+          if [[ ! -f "deployment/build-s3-dist.sh" ]]; then
+            echo "::error::deployment/build-s3-dist.sh not found"
+            exit 1
+          fi
+          echo "✓ Parameter validation passed"
+
+      - name: Determine review mode
+        id: review
+        shell: bash
+        run: |
+          if [[ "$ENVIRONMENT" == "prod" ]]; then
+            echo "use_changeset=true" >> "$GITHUB_OUTPUT"
+            echo "Enforcing change set review for production"
+          else
+            echo "use_changeset=${{ inputs.use_changeset_review }}" >> "$GITHUB_OUTPUT"
+            echo "Change set review (non-prod): ${{ inputs.use_changeset_review }}"
+          fi
+
+      - name: Guard production safeguards
+        if: env.ENVIRONMENT == 'prod' && inputs.enable_prod_stack_policy == false
+        shell: bash
+        run: |
+          echo "::error::Production deployments require stack policy protection. Remove the override to proceed."
+          exit 1
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502
+        with:
+          role-to-assume: ${{ env.ENVIRONMENT == 'prod' && env.ROLE_PROD || (env.ENVIRONMENT == 'stage' && env.ROLE_STAGE || env.ROLE_DEV) }}
+          aws-region: ${{ env.TARGET_REGION }}
+
+      - name: Resolve AWS metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          EXPECTED_ACCOUNT=""
+          case "$ENVIRONMENT" in
+            dev) EXPECTED_ACCOUNT="${ACCOUNT_DEV:-}" ;;
+            stage) EXPECTED_ACCOUNT="${ACCOUNT_STAGE:-}" ;;
+            prod) EXPECTED_ACCOUNT="${ACCOUNT_PROD:-}" ;;
+          esac
+          if [[ -n "$EXPECTED_ACCOUNT" && "$ACCOUNT_ID" != "$EXPECTED_ACCOUNT" ]]; then
+            echo "::error::Resolved account ($ACCOUNT_ID) does not match expected account ($EXPECTED_ACCOUNT) for environment $ENVIRONMENT"
+            exit 1
+          fi
+          BASE="cmf-deployment-${ACCOUNT_ID}-${ENVIRONMENT}"
+          TEMPLATE_BUCKET="${BASE}-reference"
+          ASSET_BUCKET="${BASE}-${TARGET_REGION}"
+          echo "account_id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
+          echo "template_bucket=$TEMPLATE_BUCKET" >> "$GITHUB_OUTPUT"
+          echo "asset_bucket=$ASSET_BUCKET" >> "$GITHUB_OUTPUT"
+          echo "region=$TARGET_REGION" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Deployment Target::Account ${ACCOUNT_ID} | Region ${TARGET_REGION}"
+
+      - name: Build tag set
+        id: tagvars
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAGS=()
+          add_tag() {
+            local key="$1"
+            local value="$2"
+            [[ -n "${value}" ]] && TAGS+=("${key}=${value}")
+          }
+          add_tag application "$STACK_NAME"
+          add_tag environment "$ENVIRONMENT"
+          add_tag ManagedBy "CMF-Pipeline"
+          add_tag Solution "$SOLUTION_NAME"
+          add_tag Version "$CMF_VERSION"
+          add_tag GitHubRun "$GITHUB_RUN_NUMBER"
+          add_tag Client "$CLIENT_NAME"
+          add_tag owner "$OWNER_TAG"
+          add_tag cost_center "$COST_CENTER_TAG"
+          add_tag compliance "$COMPLIANCE_TAG"
+
+          STACK_TAGS_JSON=$(printf '%s\n' "${TAGS[@]}" | jq -c -R -s '
+            split("\n")
+            | map(select(length>0))
+            | map(select(test("=")) | capture("(?<Key>[^=]+)=(?<Value>.*)"))
+          ')
+          STACK_TAGS_JSON="${STACK_TAGS_JSON:-[]}"
+          echo "stack_tags_json=$STACK_TAGS_JSON" >> "$GITHUB_OUTPUT"
+
+          STACK_TAGS_DISPLAY=$(jq -r '
+            map("\(.Key)=\(.Value)")
+            | join(", ")
+          ' <<< "$STACK_TAGS_JSON")
+          echo "stack_tags_display=$STACK_TAGS_DISPLAY" >> "$GITHUB_OUTPUT"
+
+          OBJECT_TAGS=$(jq -r '
+            map(select(.Value != ""))
+            | map("\(.Key)=\(.Value | @uri)")
+            | join("&")
+          ' <<< "$STACK_TAGS_JSON")
+          echo "object_tags=$OBJECT_TAGS" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Tags::$STACK_TAGS_DISPLAY"
+
+      - name: Configure template bucket
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUCKET="${{ steps.meta.outputs.template_bucket }}"
+          REGION="${{ steps.meta.outputs.region }}"
+          retry() {
+            local n=0 max=5 delay=3
+            until "$@"; do
+              n=$((n+1))
+              [[ $n -ge $max ]] && return 1
+              sleep $((delay**n))
+            done
+          }
+          if ! aws s3api head-bucket --bucket "$BUCKET" >/dev/null 2>&1; then
+            aws s3 mb "s3://$BUCKET" --region "$REGION"
+          fi
+          if [[ -n "$KMS_KEY_ARN" ]]; then
+            retry aws s3api put-bucket-encryption --bucket "$BUCKET" --server-side-encryption-configuration "{\"Rules\":[{\"ApplyServerSideEncryptionByDefault\":{\"SSEAlgorithm\":\"aws:kms\",\"KMSMasterKeyID\":\"$KMS_KEY_ARN\"},\"BucketKeyEnabled\":true}]}"
+          else
+            retry aws s3api put-bucket-encryption --bucket "$BUCKET" --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"},"BucketKeyEnabled":true}]}'
+          fi
+          retry aws s3api put-public-access-block --bucket "$BUCKET" --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+          retry aws s3api put-bucket-versioning --bucket "$BUCKET" --versioning-configuration Status=Enabled
+          retry aws s3api put-bucket-ownership-controls --bucket "$BUCKET" --ownership-controls Rules=[{ObjectOwnership=BucketOwnerEnforced}]
+          retry aws s3api put-bucket-lifecycle-configuration --bucket "$BUCKET" --lifecycle-configuration '{"Rules":[{"Id":"DeleteOldVersions","Status":"Enabled","NoncurrentVersionExpiration":{"NoncurrentDays":90}},{"Id":"DeleteIncompleteMultipartUploads","Status":"Enabled","AbortIncompleteMultipartUpload":{"DaysAfterInitiation":7}}]}'
+          retry aws s3api put-bucket-policy --bucket "$BUCKET" --policy "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"DenyInsecureTransport\",\"Effect\":\"Deny\",\"Principal\":\"*\",\"Action\":\"s3:*\",\"Resource\":[\"arn:aws:s3:::$BUCKET\",\"arn:aws:s3:::$BUCKET/*\"],\"Condition\":{\"Bool\":{\"aws:SecureTransport\":\"false\"}}}]}"
+
+      - name: Configure asset bucket
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUCKET="${{ steps.meta.outputs.asset_bucket }}"
+          REGION="${{ steps.meta.outputs.region }}"
+          retry() {
+            local n=0 max=5 delay=3
+            until "$@"; do
+              n=$((n+1))
+              [[ $n -ge $max ]] && return 1
+              sleep $((delay**n))
+            done
+          }
+          if ! aws s3api head-bucket --bucket "$BUCKET" >/dev/null 2>&1; then
+            aws s3 mb "s3://$BUCKET" --region "$REGION"
+          fi
+          if [[ -n "$KMS_KEY_ARN" ]]; then
+            retry aws s3api put-bucket-encryption --bucket "$BUCKET" --server-side-encryption-configuration "{\"Rules\":[{\"ApplyServerSideEncryptionByDefault\":{\"SSEAlgorithm\":\"aws:kms\",\"KMSMasterKeyID\":\"$KMS_KEY_ARN\"},\"BucketKeyEnabled\":true}]}"
+          else
+            retry aws s3api put-bucket-encryption --bucket "$BUCKET" --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"},"BucketKeyEnabled":true}]}'
+          fi
+          retry aws s3api put-public-access-block --bucket "$BUCKET" --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+          retry aws s3api put-bucket-versioning --bucket "$BUCKET" --versioning-configuration Status=Enabled
+          retry aws s3api put-bucket-ownership-controls --bucket "$BUCKET" --ownership-controls Rules=[{ObjectOwnership=BucketOwnerEnforced}]
+          retry aws s3api put-bucket-lifecycle-configuration --bucket "$BUCKET" --lifecycle-configuration '{"Rules":[{"Id":"DeleteOldVersions","Status":"Enabled","NoncurrentVersionExpiration":{"NoncurrentDays":90}},{"Id":"DeleteIncompleteMultipartUploads","Status":"Enabled","AbortIncompleteMultipartUpload":{"DaysAfterInitiation":7}}]}'
+          retry aws s3api put-bucket-policy --bucket "$BUCKET" --policy "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"DenyInsecureTransport\",\"Effect\":\"Deny\",\"Principal\":\"*\",\"Action\":\"s3:*\",\"Resource\":[\"arn:aws:s3:::$BUCKET\",\"arn:aws:s3:::$BUCKET/*\"],\"Condition\":{\"Bool\":{\"aws:SecureTransport\":\"false\"}}}]}"
+
+      - name: Ensure account-level S3 public access block
+        shell: bash
+        run: |
+          set -euo pipefail
+          retry() {
+            local n=0 max=5 delay=3
+            until "$@"; do
+              n=$((n+1))
+              [[ $n -ge $max ]] && return 1
+              sleep $((delay**n))
+            done
+          }
+          if retry aws s3control put-public-access-block \
+            --account-id "${{ steps.meta.outputs.account_id }}" \
+            --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"; then
+            echo "✓ Account-level public access block configured"
+          else
+            if [[ "$ENVIRONMENT" == "prod" ]]; then
+              echo "::error::Failed to set account-level public access block"
+              exit 1
+            else
+              echo "::warning::Could not set account-level public access block (may be enforced elsewhere)"
+            fi
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee109
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: '**/package-lock.json'
+
+      - name: Cache Python dependencies
+        uses: actions/cache@6849a6489940f00c2f30c0fb92c6274307ccb58a
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.local/lib/python*/site-packages
+          key: ${{ runner.os }}-pip-cfn-lint-v1
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Ensure jq is installed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update >/dev/null
+            sudo apt-get install -y jq >/dev/null
+          fi
+
+      - name: Patch build-s3-dist.sh for GNU sed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f "deployment/build-s3-dist.sh" ]]; then
+            sed -i -e "s/sed -i '' -e/sed -i -e/g" deployment/build-s3-dist.sh
+          else
+            echo "::warning::deployment/build-s3-dist.sh not found"
+          fi
+
+      - name: Build CMF distributable
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CODEBUILD_BUILD_NUMBER=${GITHUB_RUN_NUMBER}
+          export ENV=${ENVIRONMENT}
+          BASE_BUCKET="cmf-deployment-${{ steps.meta.outputs.account_id }}-${ENVIRONMENT}"
+          chmod +x deployment/build-s3-dist.sh
+          ./deployment/build-s3-dist.sh "$BASE_BUCKET" "$SOLUTION_NAME" "$CMF_VERSION"
+
+      - name: Stage templates and assets to S3
+        shell: bash
+        run: |
+          set -euo pipefail
+          retry() {
+            local n=0 max=5 delay=3
+            until "$@"; do
+              n=$((n+1))
+              [[ $n -ge $max ]] && return 1
+              sleep $((delay**n))
+            done
+          }
+          upload_dir() {
+            local src="$1" bucket="$2"
+            local dest="s3://${bucket}/${SOLUTION_NAME}/${CMF_VERSION}/"
+            local base_args=(
+              aws s3 cp "$src" "$dest"
+              --recursive
+              --metadata-directive REPLACE
+              --expected-bucket-owner "${{ steps.meta.outputs.account_id }}"
+            )
+            local tagging="${{ steps.tagvars.outputs.object_tags }}"
+            if [[ -n "$tagging" ]]; then
+              base_args+=(--tagging "$tagging")
+            fi
+            if [[ -n "$KMS_KEY_ARN" ]]; then
+              base_args+=(--sse aws:kms --sse-kms-key-id "$KMS_KEY_ARN")
+            fi
+            retry "${base_args[@]}"
+          }
+          upload_dir "deployment/global-s3-assets/" "${{ steps.meta.outputs.template_bucket }}"
+          upload_dir "deployment/regional-s3-assets/" "${{ steps.meta.outputs.asset_bucket }}"
+
+      - name: Validate CloudFormation template
+        shell: bash
+        run: |
+          set -euo pipefail
+          pip3 install cfn-lint==1.3.7 --break-system-packages >/dev/null
+          TEMPLATE_URL="https://${{ steps.meta.outputs.template_bucket }}.s3.${{ steps.meta.outputs.region }}.amazonaws.com/${SOLUTION_NAME}/${CMF_VERSION}/aws-cloud-migration-factory-solution.template"
+          curl -sSL "$TEMPLATE_URL" -o /tmp/cmf-template.yaml
+          cfn-lint /tmp/cmf-template.yaml --ignore-checks W3002,W9901 || echo "::warning::cfn-lint warnings (non-blocking)"
+          aws cloudformation validate-template --template-url "$TEMPLATE_URL" --region "${{ steps.meta.outputs.region }}" >/dev/null
+
+      - name: Confirm production deploy target
+        if: env.ENVIRONMENT == 'prod'
+        run: echo "::notice::Deploying to PRODUCTION environment. Approvals enforced via GitHub environment."
+
+      - name: Deploy CMF factory (CloudFormation)
+        id: deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          retry() {
+            local n=0 max=5 delay=3
+            until "$@"; do
+              n=$((n+1))
+              [[ $n -ge $max ]] && return 1
+              sleep $((delay**n))
+            done
+          }
+          urlencode() {
+            python3 -c "import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe='-_.~'))" "$1"
+          }
+          TEMPLATE_URL="https://${{ steps.meta.outputs.template_bucket }}.s3.${{ steps.meta.outputs.region }}.amazonaws.com/${SOLUTION_NAME}/${CMF_VERSION}/aws-cloud-migration-factory-solution.template"
+          PARAM_OVERRIDES_JSON=$(jq -c '
+            if type=="object" and has("Parameters") then
+              .Parameters
+              | to_entries
+              | map({Key: .key, Value: .value})
+            elif type=="object" then
+              to_entries
+              | map({Key: .key, Value: .value})
+            elif type=="array" then
+              map(select(.ParameterKey != null) | {Key: .ParameterKey, Value: .ParameterValue})
+            else []
+            end' "${{ steps.params.outputs.param_file }}")
+          DEPLOY_ARGS=(aws cloudformation deploy
+                       --region "${{ steps.meta.outputs.region }}"
+                       --stack-name "$STACK_NAME"
+                       --template-url "$TEMPLATE_URL"
+                       --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND)
+          STACK_TAGS_JSON='${{ steps.tagvars.outputs.stack_tags_json }}'
+          if [[ -n "$STACK_TAGS_JSON" && "$STACK_TAGS_JSON" != "[]" ]]; then
+            mapfile -t tag_array < <(jq -r 'map("\(.Key)=\(.Value)")[]' <<< "$STACK_TAGS_JSON")
+            if (( ${#tag_array[@]} )); then
+              DEPLOY_ARGS+=(--tags)
+              DEPLOY_ARGS+=("${tag_array[@]}")
+            fi
+          fi
+          if [[ -n "$PARAM_OVERRIDES_JSON" && "$PARAM_OVERRIDES_JSON" != "[]" ]]; then
+            mapfile -t param_array < <(jq -r '
+              map(
+                ( .Key // .ParameterKey ) as $k
+                | ( .Value // .ParameterValue ) as $v
+                | select($k != null and $v != null)
+                | "\($k)=\($v)"
+              )[]
+            ' <<< "$PARAM_OVERRIDES_JSON")
+            if (( ${#param_array[@]} )); then
+              DEPLOY_ARGS+=(--parameter-overrides)
+              DEPLOY_ARGS+=("${param_array[@]}")
+            fi
+          fi
+          if [[ "${{ steps.review.outputs.use_changeset }}" == "true" ]]; then
+            CHANGESET_NAME="cmf-deploy-$(date +%Y%m%d-%H%M%S)"
+            retry "${DEPLOY_ARGS[@]}" --no-execute-changeset --changeset-name "$CHANGESET_NAME"
+            STACK_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "${{ steps.meta.outputs.region }}" --query 'Stacks[0].StackId' --output text)
+            CHANGESET_ID=$(aws cloudformation describe-change-set --stack-name "$STACK_NAME" --change-set-name "$CHANGESET_NAME" --region "${{ steps.meta.outputs.region }}" --query 'ChangeSetId' --output text)
+            CHANGESET_URL="https://console.aws.amazon.com/cloudformation/home?region=${{ steps.meta.outputs.region }}#/stacks/changesets/changes?stackId=$(urlencode "$STACK_ID")&changeSetId=$(urlencode "$CHANGESET_ID")"
+            STACK_URL="https://console.aws.amazon.com/cloudformation/home?region=${{ steps.meta.outputs.region }}#/stacks/stackinfo?stackId=$(urlencode "$STACK_ID")"
+            echo "stack_id=$STACK_ID" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Manual Review Required::Changeset created: $CHANGESET_NAME"
+            echo "::notice title=Review Changeset::${CHANGESET_URL}"
+            echo "::notice title=View Stack::${STACK_URL}"
+          else
+            retry "${DEPLOY_ARGS[@]}"
+            STACK_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "${{ steps.meta.outputs.region }}" --query 'Stacks[0].StackId' --output text 2>/dev/null || echo "")
+            if [[ -n "$STACK_ID" ]]; then
+              STACK_URL="https://console.aws.amazon.com/cloudformation/home?region=${{ steps.meta.outputs.region }}#/stacks/stackinfo?stackId=$(urlencode "$STACK_ID")"
+              echo "::notice title=Monitor Stack::${STACK_URL}"
+            fi
+            echo "stack_id=$STACK_ID" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Wait for stack completion
+        if: steps.review.outputs.use_changeset != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          retry() {
+            local n=0 max=5 delay=3
+            until "$@"; do
+              n=$((n+1))
+              [[ $n -ge $max ]] && return 1
+              sleep $((delay**n))
+            done
+          }
+          waiter="stack-create-complete"
+          if aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "${{ steps.meta.outputs.region }}" >/dev/null 2>&1; then
+            waiter="stack-update-complete"
+          fi
+          retry aws cloudformation wait "$waiter" --stack-name "$STACK_NAME" --region "${{ steps.meta.outputs.region }}"
+
+      - name: Enable termination protection
+        if: steps.review.outputs.use_changeset != 'true'
+        shell: bash
+        run: aws cloudformation update-termination-protection --stack-name "$STACK_NAME" --enable-termination-protection --region "${{ steps.meta.outputs.region }}"
+
+      - name: Apply production stack policy
+        if: env.ENVIRONMENT == 'prod' && steps.review.outputs.use_changeset != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          STACK_POLICY='{
+            "Statement": [
+              {
+                "Effect": "Deny",
+                "Principal": "*",
+                "Action": ["Update:Replace","Update:Delete"],
+                "Resource": "*",
+                "Condition": {
+                  "StringEquals": {
+                    "ResourceType": [
+                      "AWS::DynamoDB::Table",
+                      "AWS::RDS::DBInstance",
+                      "AWS::RDS::DBCluster",
+                      "AWS::Cognito::UserPool",
+                      "AWS::S3::Bucket"
+                    ]
+                  }
+                }
+              },
+              {
+                "Effect": "Allow",
+                "Principal": "*",
+                "Action": "Update:*",
+                "Resource": "*"
+              }
+            ]
+          }'
+          aws cloudformation set-stack-policy --stack-name "$STACK_NAME" --stack-policy-body "$STACK_POLICY" --region "${{ steps.meta.outputs.region }}"
+
+      - name: Verify deployment
+        if: steps.review.outputs.use_changeset != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          urlencode() {
+            python3 -c "import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe='-_.~'))" "$1"
+          }
+          INFO=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "${{ steps.meta.outputs.region }}" --query 'Stacks[0].[StackStatus,StackId]' --output json)
+          STATUS=$(echo "$INFO" | jq -r '.[0]')
+          STACK_ID=$(echo "$INFO" | jq -r '.[1]')
+          echo "Stack Status: $STATUS"
+          if [[ "$STATUS" != "CREATE_COMPLETE" && "$STATUS" != "UPDATE_COMPLETE" ]]; then
+            echo "::error::Stack in unexpected state: $STATUS"
+            exit 1
+          fi
+          STACK_URL="https://console.aws.amazon.com/cloudformation/home?region=${{ steps.meta.outputs.region }}#/stacks/stackinfo?stackId=$(urlencode "$STACK_ID")"
+          echo "::notice title=Stack Console::${STACK_URL}"
+          aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "${{ steps.meta.outputs.region }}" --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' --output table || echo "No outputs"
+
+      - name: Output deployment summary
+        if: always()
+        shell: bash
+        run: |
+          echo "::group::Deployment Summary"
+          echo "Stack Name:     $STACK_NAME"
+          echo "Region:         ${{ steps.meta.outputs.region }}"
+          echo "Account:        ${{ steps.meta.outputs.account_id }}"
+          echo "CMF Version:    $CMF_VERSION"
+          echo "Environment:    $ENVIRONMENT"
+          echo "Template Bucket: s3://${{ steps.meta.outputs.template_bucket }}/${SOLUTION_NAME}/${CMF_VERSION}/"
+          echo "Asset Bucket:    s3://${{ steps.meta.outputs.asset_bucket }}/${SOLUTION_NAME}/${CMF_VERSION}/"
+          echo "Tags:            ${{ steps.tagvars.outputs.stack_tags_display }}"
+          echo "::endgroup::"
+
+      - name: Upload build artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@ea3d3bcfed6c6a7e61932f0c4c9bc5e3f5c1e7df
+        with:
+          name: cmf-build-artifacts-${{ github.run_number }}
+          path: |
+            deployment/global-s3-assets/
+            deployment/regional-s3-assets/
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Capture CloudFormation diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          aws cloudformation describe-stack-events --stack-name "$STACK_NAME" --region "${{ steps.meta.outputs.region }}" --max-items 50 --output json > /tmp/cfn-events.json || true
+          aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "${{ steps.meta.outputs.region }}" --output json > /tmp/cfn-stack.json || true
+          echo "::group::Recent CloudFormation Events"
+          cat /tmp/cfn-events.json || echo "No events available"
+          echo "::endgroup::"
+
+      - name: Upload CloudFormation diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea3d3bcfed6c6a7e61932f0c4c9bc5e3f5c1e7df
+        with:
+          name: cfn-diagnostics-${{ github.run_number }}
+          path: |
+            /tmp/cfn-events.json
+            /tmp/cfn-stack.json
+          retention-days: 7
+          if-no-files-found: ignore
