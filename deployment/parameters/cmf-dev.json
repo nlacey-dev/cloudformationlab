@@ -5,11 +5,11 @@
     "Tracker": "true",
     "ReplatformEC2": "true",
     "ServiceAccountEmail": "cmf-service-account-dev@example.com",
-    "DeploymentType": "Public with WAF",
+    "DeploymentType": "Default (Public)",
     "CognitoFederation": "false",
     "WebURL": "",
     "EndpointVPCId": "",
     "PrivateEndpointSubnets": "",
-    "SourceCIDR": "104.190.182.238/32, 198.51.100.10/32"
+    "SourceCIDR": ""
   }
 }
