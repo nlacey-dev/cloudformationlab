@@ -76,7 +76,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest-8-cores
+    runs-on: ubuntu-latest-4-cores
     outputs:
       account_id: ${{ steps.meta.outputs.account_id }}
       template_bucket: ${{ steps.meta.outputs.template_bucket }}
