@@ -1,0 +1,135 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Bootstrap the CMF deployment and asset S3 buckets with encryption, versioning,
+  ownership controls, and secure transport enforcement.
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues:
+      - dev
+      - stage
+      - prod
+    Description: Deployment environment identifier used in the bucket names.
+  TargetRegion:
+    Type: String
+    Default: !Ref AWS::Region
+    Description: Region suffix to append to the asset bucket name.
+  KmsKeyArn:
+    Type: String
+    Default: ''
+    Description: >
+      Optional KMS key ARN to use for server-side encryption. Leave blank to
+      use SSE-S3 (AES256).
+
+Conditions:
+  UseKms: !Not [!Equals [!Ref KmsKeyArn, '']]
+
+Resources:
+  TemplateBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub cmf-deployment-${AWS::AccountId}-${Environment}-reference
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: !If [UseKms, true, false]
+            ServerSideEncryptionByDefault:
+              SSEAlgorithm: !If [UseKms, aws:kms, AES256]
+              KMSMasterKeyID: !If [UseKms, !Ref KmsKeyArn, !Ref AWS::NoValue]
+      Tags:
+        - Key: application
+          Value: cmf-deployment
+        - Key: environment
+          Value: !Ref Environment
+
+  TemplateBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref TemplateBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !Sub arn:aws:s3:::${TemplateBucket}
+              - !Sub arn:aws:s3:::${TemplateBucket}/*
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+
+  AssetBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub cmf-deployment-${AWS::AccountId}-${Environment}-${TargetRegion}
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: !If [UseKms, true, false]
+            ServerSideEncryptionByDefault:
+              SSEAlgorithm: !If [UseKms, aws:kms, AES256]
+              KMSMasterKeyID: !If [UseKms, !Ref KmsKeyArn, !Ref AWS::NoValue]
+      Tags:
+        - Key: application
+          Value: cmf-deployment
+        - Key: environment
+          Value: !Ref Environment
+        - Key: region
+          Value: !Ref TargetRegion
+
+  AssetBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AssetBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !Sub arn:aws:s3:::${AssetBucket}
+              - !Sub arn:aws:s3:::${AssetBucket}/*
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+
+Outputs:
+  TemplateBucketName:
+    Description: Name of the CMF template bucket.
+    Value: !Ref TemplateBucket
+    Export:
+      Name: !Sub cmf-${AWS::AccountId}-${Environment}-template-bucket
+  TemplateBucketArn:
+    Description: ARN of the CMF template bucket.
+    Value: !GetAtt TemplateBucket.Arn
+  AssetBucketName:
+    Description: Name of the CMF asset bucket for the target region.
+    Value: !Ref AssetBucket
+    Export:
+      Name: !Sub cmf-${AWS::AccountId}-${Environment}-${TargetRegion}-asset-bucket
+  AssetBucketArn:
+    Description: ARN of the CMF asset bucket.
+    Value: !GetAtt AssetBucket.Arn
