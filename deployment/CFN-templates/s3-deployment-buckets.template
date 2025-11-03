@@ -13,7 +13,6 @@ Parameters:
     Description: Deployment environment identifier used in the bucket names.
   TargetRegion:
     Type: String
-    Default: !Ref AWS::Region
     Description: Region suffix to append to the asset bucket name.
   KmsKeyArn:
     Type: String
