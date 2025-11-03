@@ -95,13 +95,12 @@ jobs:
       param_file: ${{ needs.validate.outputs.param_file }}
       cfn_lint_version: "1.14.3"
       node_version: "20"
-      role_dev: "${{ vars.ACCOUNT_DEV != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_DEV) : '' }}"
-      role_stage: "${{ vars.ACCOUNT_STAGE != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_STAGE) : '' }}"
-      role_prod: "${{ vars.ACCOUNT_PROD != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_PROD) : '' }}"
+      role_dev: ${{ vars.ACCOUNT_DEV != '' && format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_DEV) || '' }}
+      role_stage: ${{ vars.ACCOUNT_STAGE != '' && format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_STAGE) || '' }}
+      role_prod: ${{ vars.ACCOUNT_PROD != '' && format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_PROD) || '' }}
 
   deploy:
     needs: build
-    environment: ${{ inputs.environment }}
     uses: ./.github/workflows/cmf-deploy.yml
     with:
       cmf_version: ${{ inputs.cmf_version }}
@@ -114,17 +113,16 @@ jobs:
       asset_bucket: ${{ needs.build.outputs.asset_bucket }}
       account_id: ${{ needs.build.outputs.account_id }}
       stack_tags_json: ${{ needs.build.outputs.stack_tags_json }}
-      use_changeset: "${{ inputs.environment == 'prod' || inputs.use_changeset_review == true ? 'true' : 'false' }}"
-      enable_prod_stack_policy: "${{ inputs.environment == 'prod' && inputs.enable_prod_stack_policy == true ? 'true' : 'false' }}"
+      use_changeset: ${{ (inputs.environment == 'prod' || inputs.use_changeset_review) && 'true' || 'false' }}
+      enable_prod_stack_policy: ${{ (inputs.environment == 'prod' && inputs.enable_prod_stack_policy) && 'true' || 'false' }}
       cfn_service_role_name: "CFN-ServiceRole-CMF"
-      role_dev: "${{ vars.ACCOUNT_DEV != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_DEV) : '' }}"
-      role_stage: "${{ vars.ACCOUNT_STAGE != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_STAGE) : '' }}"
-      role_prod: "${{ vars.ACCOUNT_PROD != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_PROD) : '' }}"
+      role_dev: ${{ vars.ACCOUNT_DEV != '' && format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_DEV) || '' }}
+      role_stage: ${{ vars.ACCOUNT_STAGE != '' && format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_STAGE) || '' }}
+      role_prod: ${{ vars.ACCOUNT_PROD != '' && format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_PROD) || '' }}
 
   target-bootstrap:
     needs: deploy
-    if: ${{ needs.deploy.result == 'success' && secrets.TARGET_ACCOUNT_CONFIGS != '' }}
-    timeout-minutes: 60
+    if: ${{ needs.deploy.result == 'success' }}
     uses: ./.github/workflows/cmf-target-account-init.yml
     with:
       solution_name: ${{ inputs.solution_name }}
@@ -134,11 +132,11 @@ jobs:
       template_bucket: ${{ needs.build.outputs.template_bucket }}
       account_id: ${{ needs.build.outputs.account_id }}
       target_stack_name: ${{ inputs.target_account_stack_name }}
-      target_replatform: "${{ inputs.target_replatform == true ? 'true' : 'false' }}"
-      target_rehost_mgn: "${{ inputs.target_rehost_mgn == true ? 'true' : 'false' }}"
-      role_dev: "${{ vars.ACCOUNT_DEV != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_DEV) : '' }}"
-      role_stage: "${{ vars.ACCOUNT_STAGE != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_STAGE) : '' }}"
-      role_prod: "${{ vars.ACCOUNT_PROD != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_PROD) : '' }}"
+      target_replatform: ${{ inputs.target_replatform && 'true' || 'false' }}
+      target_rehost_mgn: ${{ inputs.target_rehost_mgn && 'true' || 'false' }}
+      role_dev: ${{ vars.ACCOUNT_DEV != '' && format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_DEV) || '' }}
+      role_stage: ${{ vars.ACCOUNT_STAGE != '' && format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_STAGE) || '' }}
+      role_prod: ${{ vars.ACCOUNT_PROD != '' && format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_PROD) || '' }}
     secrets:
       target_account_configs: ${{ secrets.TARGET_ACCOUNT_CONFIGS }}
 
@@ -156,5 +154,4 @@ jobs:
       template_bucket: ${{ needs.build.outputs.template_bucket }}
       asset_bucket: ${{ needs.build.outputs.asset_bucket }}
       stack_tags_display: ${{ needs.build.outputs.stack_tags_display }}
-      has_target_accounts: "${{ secrets.TARGET_ACCOUNT_CONFIGS != '' ? 'true' : 'false' }}"
       stack_id: ${{ needs.deploy.outputs.stack_id }}
