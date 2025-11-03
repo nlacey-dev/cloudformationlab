@@ -251,16 +251,18 @@ jobs:
             sudo apt-get install -y jq >/dev/null
           fi
 
-      - name: Patch build script for GNU sed
+      - name: Patch build script for Linux
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -f "deployment/build-s3-dist.sh" ]] && grep -q "sed -i '' -e" deployment/build-s3-dist.sh; then
-            sed -i "s/sed -i '' -e/sed -i -e/g" deployment/build-s3-dist.sh
-          fi
+          # Fix macOS sed syntax for Linux
+          sed -i "s/sed -i '' -e/sed -i -e/g" deployment/build-s3-dist.sh
+          # Fix zip to preserve symlinks instead of following them (prevents /proc recursion)
+          sed -i 's/zip -r /zip -y -r /g' deployment/build-s3-dist.sh
 
       - name: Build CMF distributable
         shell: bash
+        timeout-minutes: 45
         run: |
           set -euo pipefail
           export CODEBUILD_BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
