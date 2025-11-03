@@ -171,6 +171,7 @@ jobs:
               --template-file deployment/CFN-templates/s3-deployment-buckets.template
               --parameter-overrides "${params[@]}"
               --region "${TARGET_REGION}"
+              --role-arn "arn:aws:iam::${ACCOUNT_ID}:role/CFN-ServiceRole-CMF"
               --no-fail-on-empty-changeset
             )
             "${args[@]}"
