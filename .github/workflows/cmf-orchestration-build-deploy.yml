@@ -156,5 +156,5 @@ jobs:
       template_bucket: ${{ needs.build.outputs.template_bucket }}
       asset_bucket: ${{ needs.build.outputs.asset_bucket }}
       stack_tags_display: ${{ needs.build.outputs.stack_tags_display }}
-      has_target_accounts: ${{ secrets.TARGET_ACCOUNT_CONFIGS != '' ? 'true' : 'false' }}
+      has_target_accounts: "${{ secrets.TARGET_ACCOUNT_CONFIGS != '' ? 'true' : 'false' }}"
       stack_id: ${{ needs.deploy.outputs.stack_id }}
