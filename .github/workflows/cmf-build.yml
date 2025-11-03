@@ -185,7 +185,7 @@ jobs:
           done
 
           if [[ "${missing}" == true ]]; then
-            STACK_NAME="CMF-BootstrapBuckets-${ENVIRONMENT}"
+            STACK_NAME="cmf-BootstrapBuckets-${ENVIRONMENT}"
             PARAMS=("Environment=${ENVIRONMENT}" "TargetRegion=${TARGET_REGION}")
             if [[ -n "${KMS_KEY_ARN}" ]]; then
               PARAMS+=("KmsKeyArn=${KMS_KEY_ARN}")
