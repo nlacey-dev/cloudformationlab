@@ -216,10 +216,72 @@ jobs:
 
             local security_groups=()
             mapfile -t security_groups < <(jq -r '.securityGroupIds // [] | .[]' <<< "${config_json}")
+
             if (( ${#security_groups[@]} == 0 )); then
-              echo "::error::securityGroupIds array is required for ${role_arn}"
-              restore_credentials
-              return 1
+              local staging_vpc_id
+              staging_vpc_id=$(jq -r '.stagingVpcId // empty' <<< "${config_json}")
+              if [[ -z "${staging_vpc_id}" || "${staging_vpc_id}" == "null" ]]; then
+                staging_vpc_id=$(aws ec2 describe-subnets --subnet-ids "${staging_subnet}" --region "${TARGET_REGION}" --query 'Subnets[0].VpcId' --output text 2>/dev/null || echo "")
+              fi
+
+              if [[ -z "${staging_vpc_id}" || "${staging_vpc_id}" == "None" ]]; then
+                echo "::error::Unable to determine VPC for staging subnet ${staging_subnet}"
+                restore_credentials
+                return 1
+              fi
+
+              local sg_name
+              sg_name=$(jq -r '.securityGroupName // empty' <<< "${config_json}")
+              if [[ -z "${sg_name}" || "${sg_name}" == "null" ]]; then
+                sg_name="${stack_name}-mgn-replication"
+              fi
+              sg_name="${sg_name:0:240}"
+
+              local existing_sg_id
+              existing_sg_id=$(aws ec2 describe-security-groups \
+                --region "${TARGET_REGION}" \
+                --filters "Name=vpc-id,Values=${staging_vpc_id}" \
+                          "Name=tag:ManagedBy,Values=CMF-Pipeline" \
+                          "Name=tag:cmf-target-stack,Values=${stack_name}" \
+                --query 'SecurityGroups[0].GroupId' \
+                --output text 2>/dev/null || echo "")
+
+              local sg_id
+              if [[ -n "${existing_sg_id}" && "${existing_sg_id}" != "None" ]]; then
+                sg_id="${existing_sg_id}"
+                echo "::notice title=Security Group::Reusing CMF-managed security group ${sg_id}"
+              else
+                sg_id=$(aws ec2 create-security-group \
+                  --region "${TARGET_REGION}" \
+                  --group-name "${sg_name}" \
+                  --description "AWS MGN replication access for ${stack_name}" \
+                  --vpc-id "${staging_vpc_id}" \
+                  --tag-specifications "ResourceType=security-group,Tags=[{Key=ManagedBy,Value=CMF-Pipeline},{Key=cmf-target-stack,Value=${stack_name}},{Key=Name,Value=${sg_name}}]" \
+                  --query 'GroupId' \
+                  --output text)
+                echo "::notice title=Security Group::Created ${sg_id} in ${staging_vpc_id}"
+
+                add_ingress_rule() {
+                  local proto="$1" from_port="$2" to_port="$3" cidr="$4" desc="$5"
+                  local err
+                  if ! err=$(aws ec2 authorize-security-group-ingress \
+                    --region "${TARGET_REGION}" \
+                    --group-id "${sg_id}" \
+                    --ip-permissions "[{\"IpProtocol\":\"${proto}\",\"FromPort\":${from_port},\"ToPort\":${to_port},\"IpRanges\":[{\"CidrIp\":\"${cidr}\",\"Description\":\"${desc}\"}]}]" 2>&1); then
+                    if ! grep -q 'InvalidPermission.Duplicate' <<< "${err}"; then
+                      echo "::error::Failed to configure security group ${sg_id}: ${err}"
+                      restore_credentials
+                      return 1
+                    fi
+                  fi
+                }
+
+                add_ingress_rule tcp 443 443 "0.0.0.0/0" "AWS MGN TLS"
+                add_ingress_rule tcp 1500 5500 "0.0.0.0/0" "AWS MGN data replication"
+                unset -f add_ingress_rule
+              fi
+
+              security_groups=("${sg_id}")
             fi
 
             local params=(

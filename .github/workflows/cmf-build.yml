@@ -176,7 +176,7 @@ jobs:
           cache-dependency-path: '**/package-lock.json'
 
       - name: Cache Python dependencies
-        uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9
+        uses: actions/cache@13adc10fa172f8fd8c25359fb0e86bafdc005559
         with:
           path: |
             ~/.cache/pip
