@@ -148,7 +148,7 @@ jobs:
           echo "template_bucket=${TEMPLATE_BUCKET}" >> "$GITHUB_OUTPUT"
           echo "asset_bucket=${ASSET_BUCKET}" >> "$GITHUB_OUTPUT"
           echo "template_url=${TEMPLATE_URL}" >> "$GITHUB_OUTPUT"
-      {
+          {
             echo "ACCOUNT_ID=${ACCOUNT_ID}"
             echo "TEMPLATE_BUCKET=${TEMPLATE_BUCKET}"
             echo "ASSET_BUCKET=${ASSET_BUCKET}"
