@@ -1,0 +1,222 @@
+name: Reusable CMF Validation
+
+on:
+  workflow_call:
+    inputs:
+      cmf_version:
+        type: string
+        required: true
+      solution_name:
+        type: string
+        required: true
+      stack_name:
+        type: string
+        required: true
+      region:
+        type: string
+        required: true
+      environment:
+        type: string
+        required: true
+      kms_key_arn:
+        type: string
+        required: false
+        default: ""
+      tag_overrides:
+        type: string
+        required: false
+        default: ""
+      client_name:
+        type: string
+        required: false
+        default: ""
+    outputs:
+      param_file:
+        description: Resolved CMF parameter file path
+        value: ${{ jobs.validate.outputs.param_file }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      param_file: ${{ steps.param.outputs.param_file }}
+    env:
+      CMF_VERSION: ${{ inputs.cmf_version }}
+      SOLUTION_NAME: ${{ inputs.solution_name }}
+      STACK_NAME: ${{ inputs.stack_name }}
+      TARGET_REGION: ${{ inputs.region }}
+      ENVIRONMENT: ${{ inputs.environment }}
+      KMS_KEY_ARN: ${{ inputs.kms_key_arn }}
+      TAG_OVERRIDES: ${{ inputs.tag_overrides }}
+      CLIENT_NAME: ${{ inputs.client_name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+        with:
+          submodules: true
+
+      - name: Print workflow metadata
+        shell: bash
+        run: |
+          echo "::group::Validation Metadata"
+          echo "CMF Version: ${CMF_VERSION}"
+          echo "Solution: ${SOLUTION_NAME}"
+          echo "Environment: ${ENVIRONMENT}"
+          echo "Region: ${TARGET_REGION}"
+          echo "Stack Name: ${STACK_NAME}"
+          echo "Client: ${CLIENT_NAME:-n/a}"
+          echo "::endgroup::"
+
+      - name: Validate workflow inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "::group::Validating Workflow Inputs"
+          errors=0
+
+          # CMF version must be semver, custom tag, or git SHA
+          if [[ ! "${CMF_VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] && \
+             [[ ! "${CMF_VERSION}" =~ ^custom[0-9]+$ ]] && \
+             [[ ! "${CMF_VERSION}" =~ ^[0-9a-f]{7,40}$ ]]; then
+            echo "::error::Invalid CMF version: ${CMF_VERSION}"
+            echo "::error::Expected values like v4.5.1, custom001, or a commit SHA"
+            errors=$((errors + 1))
+          fi
+
+          # Stack name constraints
+          if [[ ! "${STACK_NAME}" =~ ^[a-zA-Z][a-zA-Z0-9-]*$ ]]; then
+            echo "::error::Stack name must start with a letter and contain only alphanumeric characters or hyphens"
+            errors=$((errors + 1))
+          fi
+          if [[ ${#STACK_NAME} -gt 128 ]]; then
+            echo "::error::Stack name length ${#STACK_NAME} exceeds 128 characters"
+            errors=$((errors + 1))
+          fi
+
+          # Region allow-list (adjust as required)
+          VALID_REGIONS="us-east-1 us-east-2 us-west-1 us-west-2 eu-west-1 eu-west-2 eu-west-3 eu-central-1 eu-north-1 ap-south-1 ap-northeast-1 ap-northeast-2 ap-southeast-1 ap-southeast-2 ca-central-1 sa-east-1"
+          if ! echo "${VALID_REGIONS}" | grep -qw "${TARGET_REGION}"; then
+            echo "::error::Unsupported or invalid region: ${TARGET_REGION}"
+            errors=$((errors + 1))
+          fi
+
+          # KMS key ARN format (if provided)
+          if [[ -n "${KMS_KEY_ARN}" ]]; then
+            # HIGH FIX: Expanded regex to support GovCloud, China regions, and alias format
+            if [[ ! "${KMS_KEY_ARN}" =~ ^arn:(aws|aws-us-gov|aws-cn):kms:[a-z0-9-]+:[0-9]{12}:(key|alias)/[a-zA-Z0-9/_-]+$ ]]; then
+              echo "::error::Invalid KMS key ARN format: ${KMS_KEY_ARN}"
+              errors=$((errors + 1))
+            else
+              kms_region=$(echo "${KMS_KEY_ARN}" | cut -d: -f4)
+              if [[ "${kms_region}" != "${TARGET_REGION}" ]]; then
+                echo "::warning::KMS key region (${kms_region}) differs from deployment region (${TARGET_REGION})"
+              fi
+            fi
+          fi
+
+          if (( errors > 0 )); then
+            echo "::error::Workflow input validation failed with ${errors} error(s)"
+            exit 1
+          fi
+
+          echo "✓ Workflow inputs validated successfully"
+          echo "::endgroup::"
+
+      - name: Resolve parameter file
+        id: param
+        shell: bash
+        run: |
+          set -euo pipefail
+          PARAM_FILE="deployment/parameters/cmf-${ENVIRONMENT}.json"
+          if [[ ! -f "${PARAM_FILE}" ]]; then
+            echo "::error::Parameter file not found: ${PARAM_FILE}"
+            echo "::error::Create this file (or symlink) before running the workflow."
+            exit 1
+          fi
+          echo "param_file=${PARAM_FILE}" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Parameter File::${PARAM_FILE}"
+
+      - name: Validate CMF parameter file
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "::group::Validating CMF Parameters"
+          PARAM_FILE="${{ steps.param.outputs.param_file }}"
+
+          # Ensure JSON is well-formed
+          if ! jq empty "${PARAM_FILE}" >/dev/null 2>&1; then
+            echo "::error::Parameter file '${PARAM_FILE}' is not valid JSON"
+            exit 1
+          fi
+
+          PARAM_JSON=$(cat "${PARAM_FILE}")
+
+          get_param() {
+            jq -r --arg key "$1" '
+              if type=="object" and has("Parameters") and (.Parameters[$key] != null) then .Parameters[$key]
+              elif type=="object" and (.[$key] != null) then .[$key]
+              elif type=="array" then (map(select(.ParameterKey == $key) | .ParameterValue) | first // "")
+              else ""
+              end' <<< "${PARAM_JSON}"
+          }
+
+          SERVICE_EMAIL=$(get_param "ServiceAccountEmail")
+          if [[ -z "${SERVICE_EMAIL}" || "${SERVICE_EMAIL}" == "serviceaccount@yourdomain.com" ]]; then
+            echo "::error::ServiceAccountEmail must be populated and not left as the default placeholder"
+            exit 1
+          fi
+
+          DEPLOYMENT_TYPE=$(get_param "DeploymentType")
+          DEPLOYMENT_TYPE=${DEPLOYMENT_TYPE:-"Default (Public)"}
+          echo "Deployment type: ${DEPLOYMENT_TYPE}"
+
+          if [[ "${DEPLOYMENT_TYPE}" == "Private" ]]; then
+            WEB_URL=$(get_param "WebURL")
+            VPC_ID=$(get_param "EndpointVPCId")
+            SUBNET_IDS=$(get_param "PrivateEndpointSubnets")
+
+            if [[ -z "${WEB_URL}" || "${WEB_URL}" == */ ]]; then
+              echo "::error::Private deployments require a WebURL without trailing slash"
+              exit 1
+            fi
+            if [[ -z "${VPC_ID}" ]]; then
+              echo "::error::Private deployments require EndpointVPCId"
+              exit 1
+            fi
+            if [[ -z "${SUBNET_IDS}" ]]; then
+              echo "::error::Private deployments require PrivateEndpointSubnets (comma-separated)"
+              exit 1
+            fi
+            IFS=',' read -r -a subnet_array <<< "${SUBNET_IDS}"
+            if (( ${#subnet_array[@]} < 2 )); then
+              echo "::error::Provide at least two subnet IDs for high availability"
+              exit 1
+            fi
+          fi
+
+          if [[ "${DEPLOYMENT_TYPE}" == "Public with WAF" ]]; then
+            SOURCE_CIDR=$(get_param "SourceCIDR")
+            if [[ -z "${SOURCE_CIDR}" ]]; then
+              echo "::error::Public with WAF deployments require SourceCIDR values"
+              exit 1
+            fi
+            IFS=',' read -r -a cidr_array <<< "${SOURCE_CIDR}"
+            if (( ${#cidr_array[@]} < 1 )); then
+              echo "::error::Provide at least one CIDR block for SourceCIDR"
+              exit 1
+            fi
+            for cidr in "${cidr_array[@]}"; do
+              cidr_trimmed="$(echo "${cidr}" | xargs)"
+              if ! [[ ${cidr_trimmed} =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$ ]]; then
+                echo "::warning::SourceCIDR entry '${cidr_trimmed}' may not be valid CIDR notation"
+              fi
+            done
+          fi
+
+          if [[ ! -f "deployment/build-s3-dist.sh" ]]; then
+            echo "::error::Required build script 'deployment/build-s3-dist.sh' is missing"
+            exit 1
+          fi
+
+          echo "✓ Parameter validation completed"
+          echo "::endgroup::"

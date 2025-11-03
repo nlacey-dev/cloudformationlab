@@ -1,0 +1,306 @@
+name: Reusable CMF Build & Stage
+
+on:
+  workflow_call:
+    inputs:
+      cmf_version:
+        type: string
+        required: true
+      solution_name:
+        type: string
+        required: true
+      stack_name:
+        type: string
+        required: true
+      region:
+        type: string
+        required: true
+      environment:
+        type: string
+        required: true
+      kms_key_arn:
+        type: string
+        required: false
+        default: ""
+      tag_overrides:
+        type: string
+        required: false
+        default: ""
+      client_name:
+        type: string
+        required: false
+        default: ""
+      param_file:
+        type: string
+        required: true
+      cfn_lint_version:
+        type: string
+        required: false
+        default: "1.14.3"
+      node_version:
+        type: string
+        required: false
+        default: "20"
+      retry_max_attempts:
+        type: number
+        required: false
+        default: 5
+        description: "Maximum number of retry attempts for S3 uploads"
+      retry_base_delay:
+        type: number
+        required: false
+        default: 3
+        description: "Base delay in seconds for exponential backoff"
+      role_dev:
+        type: string
+        required: true
+      role_stage:
+        type: string
+        required: true
+      role_prod:
+        type: string
+        required: true
+    outputs:
+      account_id:
+        value: ${{ jobs.build.outputs.account_id }}
+      template_bucket:
+        value: ${{ jobs.build.outputs.template_bucket }}
+      asset_bucket:
+        value: ${{ jobs.build.outputs.asset_bucket }}
+      stack_tags_json:
+        value: ${{ jobs.build.outputs.stack_tags_json }}
+      stack_tags_display:
+        value: ${{ jobs.build.outputs.stack_tags_display }}
+      template_url:
+        value: ${{ jobs.build.outputs.template_url }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      account_id: ${{ steps.meta.outputs.account_id }}
+      template_bucket: ${{ steps.meta.outputs.template_bucket }}
+      asset_bucket: ${{ steps.meta.outputs.asset_bucket }}
+      stack_tags_json: ${{ steps.tags.outputs.stack_tags_json }}
+      stack_tags_display: ${{ steps.tags.outputs.stack_tags_display }}
+      template_url: ${{ steps.meta.outputs.template_url }}
+    env:
+      CMF_VERSION: ${{ inputs.cmf_version }}
+      SOLUTION_NAME: ${{ inputs.solution_name }}
+      STACK_NAME: ${{ inputs.stack_name }}
+      TARGET_REGION: ${{ inputs.region }}
+      ENVIRONMENT: ${{ inputs.environment }}
+      KMS_KEY_ARN: ${{ inputs.kms_key_arn }}
+      TAG_OVERRIDES: ${{ inputs.tag_overrides }}
+      CLIENT_NAME: ${{ inputs.client_name }}
+      PARAM_FILE: ${{ inputs.param_file }}
+      CFN_LINT_VERSION: ${{ inputs.cfn_lint_version }}
+      NODE_VERSION: ${{ inputs.node_version }}
+      RETRY_MAX_ATTEMPTS: ${{ inputs.retry_max_attempts }}
+      RETRY_BASE_DELAY: ${{ inputs.retry_base_delay }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+        with:
+          submodules: true
+
+      - name: Determine deployment role
+        id: role
+        shell: bash
+        env:
+          ROLE_DEV: ${{ inputs.role_dev }}
+          ROLE_STAGE: ${{ inputs.role_stage }}
+          ROLE_PROD: ${{ inputs.role_prod }}
+        run: |
+          set -euo pipefail
+          case "${ENVIRONMENT}" in
+            dev) ROLE="${ROLE_DEV}" ;;
+            stage) ROLE="${ROLE_STAGE}" ;;
+            prod) ROLE="${ROLE_PROD}" ;;
+            *) echo "::error::Unsupported environment: ${ENVIRONMENT}"; exit 1 ;;
+          esac
+          if [[ -z "${ROLE}" ]]; then
+            echo "::error::Deployment role not configured for environment ${ENVIRONMENT}"
+            exit 1
+          fi
+          echo "role=${ROLE}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502
+        with:
+          role-to-assume: ${{ steps.role.outputs.role }}
+          role-session-name: CMF-Build-${{ github.run_id }}
+          role-duration-seconds: 7200
+          aws-region: ${{ env.TARGET_REGION }}
+
+      - name: Resolve AWS metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          BASE="cmf-deployment-${ACCOUNT_ID}-${ENVIRONMENT}"
+          TEMPLATE_BUCKET="${BASE}-reference"
+          ASSET_BUCKET="${BASE}-${TARGET_REGION}"
+          TEMPLATE_URL="https://${TEMPLATE_BUCKET}.s3.${TARGET_REGION}.amazonaws.com/${SOLUTION_NAME}/${CMF_VERSION}/aws-cloud-migration-factory-solution.template"
+
+          echo "account_id=${ACCOUNT_ID}" >> "$GITHUB_OUTPUT"
+          echo "template_bucket=${TEMPLATE_BUCKET}" >> "$GITHUB_OUTPUT"
+          echo "asset_bucket=${ASSET_BUCKET}" >> "$GITHUB_OUTPUT"
+          echo "template_url=${TEMPLATE_URL}" >> "$GITHUB_OUTPUT"
+          {
+            echo "ACCOUNT_ID=${ACCOUNT_ID}"
+            echo "TEMPLATE_BUCKET=${TEMPLATE_BUCKET}"
+            echo "ASSET_BUCKET=${ASSET_BUCKET}"
+            echo "TEMPLATE_URL=${TEMPLATE_URL}"
+          } >> "$GITHUB_ENV"
+
+          echo "::notice title=Deployment Target::Account ${ACCOUNT_ID} | Region ${TARGET_REGION}"
+
+      - name: Verify bootstrap S3 buckets
+        shell: bash
+        run: |
+          set -euo pipefail
+          for bucket in "${TEMPLATE_BUCKET}" "${ASSET_BUCKET}"; do
+            if ! aws s3api head-bucket --bucket "${bucket}" >/dev/null 2>&1; then
+              echo "::error::Bootstrap bucket '${bucket}' not found. Deploy the s3-deployment-buckets stack first."
+              exit 1
+            fi
+          done
+
+      - name: Setup Node.js
+        uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: '**/package-lock.json'
+
+      - name: Cache Python dependencies
+        uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.local/lib/python*/site-packages
+          key: ${{ runner.os }}-pip-${{ env.CFN_LINT_VERSION }}-${{ hashFiles('**/requirements*.txt') }}-v1
+          restore-keys: |
+            ${{ runner.os }}-pip-${{ env.CFN_LINT_VERSION }}-
+            ${{ runner.os }}-pip-
+
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update -qq >/dev/null
+            sudo apt-get install -y jq >/dev/null
+          fi
+
+      - name: Patch build script for GNU sed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f "deployment/build-s3-dist.sh" ]] && grep -q "sed -i '' -e" deployment/build-s3-dist.sh; then
+            sed -i "s/sed -i '' -e/sed -i -e/g" deployment/build-s3-dist.sh
+          fi
+
+      - name: Build CMF distributable
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CODEBUILD_BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
+          export ENV="${ENVIRONMENT}"
+          BASE_BUCKET="cmf-deployment-${ACCOUNT_ID}-${ENVIRONMENT}"
+          chmod +x deployment/build-s3-dist.sh
+          ./deployment/build-s3-dist.sh "${BASE_BUCKET}" "${SOLUTION_NAME}" "${CMF_VERSION}"
+
+      - name: Build resource tags
+        id: tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAGS=()
+          add_tag() {
+            local key="$1" value="$2"
+            [[ -n "${value}" ]] && TAGS+=("${key}=${value}")
+          }
+          add_tag "Application" "${STACK_NAME}"
+          add_tag "Environment" "${ENVIRONMENT}"
+          add_tag "ManagedBy" "CMF-Pipeline"
+          add_tag "Solution" "${SOLUTION_NAME}"
+          add_tag "Version" "${CMF_VERSION}"
+          add_tag "GitHubRun" "${GITHUB_RUN_NUMBER}"
+          add_tag "DeployedBy" "${GITHUB_ACTOR}"
+          [[ -n "${CLIENT_NAME}" ]] && add_tag "Client" "${CLIENT_NAME}"
+
+          if [[ -n "${TAG_OVERRIDES}" ]]; then
+            while IFS= read -r override; do
+              override="$(echo "${override}" | xargs)"
+              [[ -z "${override}" || "${override}" == \#* ]] && continue
+              if [[ "${override}" =~ ^[a-zA-Z0-9_:.-]+=[a-zA-Z0-9_:./\ -]+$ ]]; then
+                TAGS+=("${override}")
+              else
+                echo "::warning::Skipping invalid tag override: ${override}"
+              fi
+            done <<< "${TAG_OVERRIDES//$'\r'/}"
+          fi
+
+          STACK_TAGS_JSON=$(printf '%s\n' "${TAGS[@]}" | jq -c -R -s '
+            split("\n")
+            | map(select(length>0))
+            | map(select(test("=")) | capture("(?<Key>[^=]+)=(?<Value>.*)"))
+          ')
+          STACK_TAGS_JSON="${STACK_TAGS_JSON:-[]}"
+          STACK_TAGS_DISPLAY=$(jq -r 'map("\(.Key)=\(.Value)") | join(", ")' <<< "${STACK_TAGS_JSON}")
+          OBJECT_TAGS=$(jq -r 'map(select(.Value != "")) | map("\(.Key)=\(.Value | @uri)") | join("&")' <<< "${STACK_TAGS_JSON}")
+
+          echo "stack_tags_json=${STACK_TAGS_JSON}" >> "$GITHUB_OUTPUT"
+          echo "stack_tags_display=${STACK_TAGS_DISPLAY}" >> "$GITHUB_OUTPUT"
+          echo "object_tags=${OBJECT_TAGS}" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Tags::${STACK_TAGS_DISPLAY}"
+
+      - name: Stage templates and assets to S3
+        shell: bash
+        env:
+          OBJECT_TAGS: ${{ steps.tags.outputs.object_tags }}
+        run: |
+          set -euo pipefail
+          # LOW FIX: Made retry parameters configurable via workflow inputs
+          retry() {
+            local n=0 max="${RETRY_MAX_ATTEMPTS}" delay="${RETRY_BASE_DELAY}"
+            until "$@"; do
+              n=$((n+1))
+              [[ $n -ge $max ]] && return 1
+              sleep $((delay ** n))
+            done
+          }
+          upload_dir() {
+            local src="$1" bucket="$2"
+            local dest="s3://${bucket}/${SOLUTION_NAME}/${CMF_VERSION}/"
+            local args=(
+              aws s3 cp "${src}" "${dest}"
+              --recursive
+              --metadata-directive REPLACE
+              --expected-bucket-owner "${ACCOUNT_ID}"
+            )
+            if [[ -n "${OBJECT_TAGS}" ]]; then
+              args+=(--tagging "${OBJECT_TAGS}")
+            fi
+            # MEDIUM FIX: Added fallback to AES256 encryption when KMS not provided
+            if [[ -n "${KMS_KEY_ARN}" ]]; then
+              args+=(--sse aws:kms --sse-kms-key-id "${KMS_KEY_ARN}")
+            else
+              args+=(--sse AES256)
+            fi
+            retry "${args[@]}"
+          }
+          upload_dir "deployment/global-s3-assets/" "${TEMPLATE_BUCKET}"
+          upload_dir "deployment/regional-s3-assets/" "${ASSET_BUCKET}"
+
+      - name: Validate CloudFormation template
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws s3 cp "s3://${TEMPLATE_BUCKET}/${SOLUTION_NAME}/${CMF_VERSION}/aws-cloud-migration-factory-solution.template" /tmp/cmf-template.yaml --expected-bucket-owner "${ACCOUNT_ID}"
+          pip3 install "cfn-lint==${CFN_LINT_VERSION}" --break-system-packages --quiet
+          cfn-lint /tmp/cmf-template.yaml --ignore-checks W3002,W9901 || echo "::warning::cfn-lint reported issues (non-blocking)"
+          aws cloudformation validate-template --template-url "${{ steps.meta.outputs.template_url }}" --region "${TARGET_REGION}" >/dev/null

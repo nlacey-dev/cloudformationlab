@@ -1,0 +1,279 @@
+name: Reusable CMF Factory Deploy
+
+on:
+  workflow_call:
+    inputs:
+      cmf_version:
+        type: string
+        required: true
+      solution_name:
+        type: string
+        required: true
+      stack_name:
+        type: string
+        required: true
+      region:
+        type: string
+        required: true
+      environment:
+        type: string
+        required: true
+      param_file:
+        type: string
+        required: true
+      template_bucket:
+        type: string
+        required: true
+      asset_bucket:
+        type: string
+        required: true
+      account_id:
+        type: string
+        required: true
+      stack_tags_json:
+        type: string
+        required: true
+      use_changeset:
+        type: string
+        required: true
+      enable_prod_stack_policy:
+        type: string
+        required: true
+      cfn_service_role_name:
+        type: string
+        required: false
+        default: "CFN-ServiceRole-CMF"
+      role_dev:
+        type: string
+        required: true
+      role_stage:
+        type: string
+        required: true
+      role_prod:
+        type: string
+        required: true
+    outputs:
+      stack_id:
+        value: ${{ jobs.deploy.outputs.stack_id }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    outputs:
+      stack_id: ${{ steps.verify.outputs.stack_id }}
+    env:
+      CMF_VERSION: ${{ inputs.cmf_version }}
+      SOLUTION_NAME: ${{ inputs.solution_name }}
+      STACK_NAME: ${{ inputs.stack_name }}
+      TARGET_REGION: ${{ inputs.region }}
+      ENVIRONMENT: ${{ inputs.environment }}
+      PARAM_FILE: ${{ inputs.param_file }}
+      TEMPLATE_BUCKET: ${{ inputs.template_bucket }}
+      ASSET_BUCKET: ${{ inputs.asset_bucket }}
+      ACCOUNT_ID: ${{ inputs.account_id }}
+      STACK_TAGS_JSON: ${{ inputs.stack_tags_json }}
+      USE_CHANGESET: ${{ inputs.use_changeset }}
+      ENABLE_PROD_STACK_POLICY: ${{ inputs.enable_prod_stack_policy }}
+      CFN_SERVICE_ROLE_NAME: ${{ inputs.cfn_service_role_name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+        with:
+          submodules: true
+
+      - name: Determine deployment role
+        id: role
+        shell: bash
+        env:
+          ROLE_DEV: ${{ inputs.role_dev }}
+          ROLE_STAGE: ${{ inputs.role_stage }}
+          ROLE_PROD: ${{ inputs.role_prod }}
+        run: |
+          set -euo pipefail
+          case "${ENVIRONMENT}" in
+            dev) ROLE="${ROLE_DEV}" ;;
+            stage) ROLE="${ROLE_STAGE}" ;;
+            prod) ROLE="${ROLE_PROD}" ;;
+            *) echo "::error::Unsupported environment ${ENVIRONMENT}"; exit 1 ;;
+          esac
+          if [[ -z "${ROLE}" ]]; then
+            echo "::error::Deployment role not configured for ${ENVIRONMENT}"
+            exit 1
+          fi
+          echo "role=${ROLE}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502
+        with:
+          role-to-assume: ${{ steps.role.outputs.role }}
+          role-session-name: CMF-Deploy-${{ github.run_id }}
+          role-duration-seconds: 7200
+          aws-region: ${{ env.TARGET_REGION }}
+
+      - name: Prepare production stack policy
+        if: ${{ env.ENVIRONMENT == 'prod' && env.ENABLE_PROD_STACK_POLICY == 'true' }}
+        id: stack_policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/stack-policy.json <<'EOF'
+{
+  "Statement": [
+    {
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": ["Update:Replace", "Update:Delete"],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "ResourceType": [
+            "AWS::DynamoDB::Table",
+            "AWS::RDS::DBInstance",
+            "AWS::RDS::DBCluster",
+            "AWS::Cognito::UserPool",
+            "AWS::S3::Bucket"
+          ]
+        }
+      }
+    },
+    {
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "Update:*",
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+          echo "policy_file=/tmp/stack-policy.json" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy CMF factory stack
+        id: deploy_stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEMPLATE_URL="https://${TEMPLATE_BUCKET}.s3.${TARGET_REGION}.amazonaws.com/${SOLUTION_NAME}/${CMF_VERSION}/aws-cloud-migration-factory-solution.template"
+
+          PARAM_OVERRIDES_JSON=$(jq -c '
+            if type=="object" and has("Parameters") then
+              .Parameters | to_entries | map({Key: .key, Value: .value})
+            elif type=="object" then
+              to_entries | map({Key: .key, Value: .value})
+            elif type=="array" then
+              map(select(.ParameterKey != null) | {Key: .ParameterKey, Value: .ParameterValue})
+            else []
+            end' "${PARAM_FILE}")
+
+          mapfile -t PARAMS < <(jq -r '
+            map((.Key // .ParameterKey) as $k | (.Value // .ParameterValue) as $v |
+              select($k != null and $v != null) | "\($k)=\($v)")[]
+          ' <<< "${PARAM_OVERRIDES_JSON}")
+
+          mapfile -t TAGS < <(jq -r 'map("\(.Key)=\(.Value)")[]' <<< "${STACK_TAGS_JSON}")
+
+          SERVICE_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${CFN_SERVICE_ROLE_NAME}"
+          DEPLOY_ARGS=(
+            aws cloudformation deploy
+            --region "${TARGET_REGION}"
+            --stack-name "${STACK_NAME}"
+            --template-url "${TEMPLATE_URL}"
+            --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
+            --role-arn "${SERVICE_ROLE_ARN}"
+          )
+
+          if [[ "${#TAGS[@]}" -gt 0 ]]; then
+            DEPLOY_ARGS+=(--tags "${TAGS[@]}")
+          fi
+
+          if [[ "${#PARAMS[@]}" -gt 0 ]]; then
+            DEPLOY_ARGS+=(--parameter-overrides "${PARAMS[@]}")
+          fi
+
+          # CRITICAL FIX: Removed unsupported --stack-policy-during-update-body flag (lines 192-194)
+          # Stack policy is correctly applied post-deployment using set-stack-policy at line 253
+
+          retry() {
+            local n=0 max=5 delay=3
+            until "$@"; do
+              n=$((n+1))
+              [[ $n -ge $max ]] && return 1
+              sleep $((delay ** n))
+            done
+          }
+
+          if [[ "${USE_CHANGESET}" == "true" ]]; then
+            CHANGESET_NAME="cmf-deploy-$(date +%Y%m%d-%H%M%S)"
+            echo "Creating change set ${CHANGESET_NAME}"
+            retry "${DEPLOY_ARGS[@]}" --no-execute-changeset --changeset-name "${CHANGESET_NAME}"
+            STACK_ID=$(aws cloudformation describe-stacks --stack-name "${STACK_NAME}" --region "${TARGET_REGION}" --query 'Stacks[0].StackId' --output text)
+            CHANGESET_ID=$(aws cloudformation describe-change-set --stack-name "${STACK_NAME}" --change-set-name "${CHANGESET_NAME}" --region "${TARGET_REGION}" --query 'ChangeSetId' --output text)
+            echo "stack_id=${STACK_ID}" >> "$GITHUB_OUTPUT"
+            echo "changeset_id=${CHANGESET_ID}" >> "$GITHUB_OUTPUT"
+            echo "changeset_name=${CHANGESET_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "Executing CloudFormation deployment..."
+            retry "${DEPLOY_ARGS[@]}"
+          fi
+
+          echo "template_url=${TEMPLATE_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for stack completion
+        if: ${{ inputs.use_changeset != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          waiter="stack-create-complete"
+          STATUS=$(aws cloudformation describe-stacks --stack-name "${STACK_NAME}" --region "${TARGET_REGION}" --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo "")
+          # LOW FIX: Use explicit regex instead of wildcard glob for status matching
+          if [[ "${STATUS}" =~ ^(UPDATE_IN_PROGRESS|UPDATE_COMPLETE|UPDATE_COMPLETE_CLEANUP_IN_PROGRESS|UPDATE_ROLLBACK_COMPLETE|UPDATE_ROLLBACK_FAILED)$ ]]; then
+            waiter="stack-update-complete"
+          fi
+          aws cloudformation wait "${waiter}" --stack-name "${STACK_NAME}" --region "${TARGET_REGION}"
+
+      - name: Cancel stack update on failure
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          STATUS=$(aws cloudformation describe-stacks --stack-name "${STACK_NAME}" --region "${TARGET_REGION}" --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo "")
+          if [[ "${STATUS}" =~ _IN_PROGRESS$ ]]; then
+            echo "::warning::Deployment failed with status ${STATUS}. Attempting to cancel update."
+            aws cloudformation cancel-update-stack --stack-name "${STACK_NAME}" --region "${TARGET_REGION}" || true
+          fi
+
+      - name: Enable termination protection
+        if: ${{ inputs.use_changeset != 'true' }}
+        shell: bash
+        run: |
+          aws cloudformation update-termination-protection \
+            --stack-name "${STACK_NAME}" \
+            --enable-termination-protection \
+            --region "${TARGET_REGION}"
+
+      - name: Apply production stack policy
+        if: ${{ env.ENVIRONMENT == 'prod' && env.ENABLE_PROD_STACK_POLICY == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f "${{ steps.stack_policy.outputs.policy_file }}" ]]; then
+            aws cloudformation set-stack-policy \
+              --stack-name "${STACK_NAME}" \
+              --stack-policy-body "file://${{ steps.stack_policy.outputs.policy_file }}" \
+              --region "${TARGET_REGION}"
+          fi
+
+      - name: Verify deployment
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          INFO=$(aws cloudformation describe-stacks --stack-name "${STACK_NAME}" --region "${TARGET_REGION}" --query 'Stacks[0].[StackStatus,StackId]' --output json)
+          STATUS=$(echo "${INFO}" | jq -r '.[0]')
+          STACK_ID=$(echo "${INFO}" | jq -r '.[1]')
+          echo "Stack Status: ${STATUS}"
+          if [[ "${STATUS}" != "CREATE_COMPLETE" && "${STATUS}" != "UPDATE_COMPLETE" ]]; then
+            echo "::error::Stack in unexpected state: ${STATUS}"
+            exit 1
+          fi
+          aws cloudformation describe-stacks --stack-name "${STACK_NAME}" --region "${TARGET_REGION}" --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' --output table || echo "No outputs"
+          echo "stack_id=${STACK_ID}" >> "$GITHUB_OUTPUT"

@@ -1,0 +1,355 @@
+name: Reusable CMF Target Account Init
+
+on:
+  workflow_call:
+    inputs:
+      solution_name:
+        type: string
+        required: true
+      cmf_version:
+        type: string
+        required: true
+      region:
+        type: string
+        required: true
+      environment:
+        type: string
+        required: true
+      template_bucket:
+        type: string
+        required: true
+      account_id:
+        type: string
+        required: true
+      target_stack_name:
+        type: string
+        required: false
+        default: "cmf-target-account"
+      target_replatform:
+        type: string
+        required: false
+        default: "true"
+      target_rehost_mgn:
+        type: string
+        required: false
+        default: "true"
+      role_dev:
+        type: string
+        required: true
+      role_stage:
+        type: string
+        required: true
+      role_prod:
+        type: string
+        required: true
+    secrets:
+      target_account_configs:
+        required: false
+
+jobs:
+  target-bootstrap:
+    if: ${{ secrets.target_account_configs != '' }}
+    runs-on: ubuntu-latest
+    env:
+      SOLUTION_NAME: ${{ inputs.solution_name }}
+      CMF_VERSION: ${{ inputs.cmf_version }}
+      TARGET_REGION: ${{ inputs.region }}
+      ENVIRONMENT: ${{ inputs.environment }}
+      TEMPLATE_BUCKET: ${{ inputs.template_bucket }}
+      FACTORY_ACCOUNT_ID: ${{ inputs.account_id }}
+      TARGET_STACK_NAME: ${{ inputs.target_stack_name }}
+      TARGET_REPLATFORM: ${{ inputs.target_replatform }}
+      TARGET_REHOST_MGN: ${{ inputs.target_rehost_mgn }}
+      TARGET_ACCOUNT_CONFIGS: ${{ secrets.target_account_configs }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+        with:
+          submodules: true
+
+      - name: Determine deployment role
+        id: role
+        shell: bash
+        env:
+          ROLE_DEV: ${{ inputs.role_dev }}
+          ROLE_STAGE: ${{ inputs.role_stage }}
+          ROLE_PROD: ${{ inputs.role_prod }}
+        run: |
+          set -euo pipefail
+          case "${ENVIRONMENT}" in
+            dev) ROLE="${ROLE_DEV}" ;;
+            stage) ROLE="${ROLE_STAGE}" ;;
+            prod) ROLE="${ROLE_PROD}" ;;
+            *) echo "::error::Unsupported environment ${ENVIRONMENT}"; exit 1 ;;
+          esac
+          if [[ -z "${ROLE}" ]]; then
+            echo "::error::Deployment role not configured for ${ENVIRONMENT}"
+            exit 1
+          fi
+          echo "role=${ROLE}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502
+        with:
+          role-to-assume: ${{ steps.role.outputs.role }}
+          role-session-name: CMF-Target-${{ github.run_id }}
+          role-duration-seconds: 7200
+          aws-region: ${{ env.TARGET_REGION }}
+
+      - name: Deploy target account resources
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${TARGET_ACCOUNT_CONFIGS}" ]]; then
+            echo "::notice::No target account configuration supplied; skipping target bootstrap."
+            exit 0
+          fi
+
+          if ! jq empty <<< "${TARGET_ACCOUNT_CONFIGS}" >/dev/null 2>&1; then
+            echo "::error::TARGET_ACCOUNT_CONFIGS is not valid JSON"
+            exit 1
+          fi
+
+          mapfile -t CONFIGS < <(jq -c '.[]' <<< "${TARGET_ACCOUNT_CONFIGS}")
+          if (( ${#CONFIGS[@]} == 0 )); then
+            echo "::notice::TARGET_ACCOUNT_CONFIGS array is empty; nothing to deploy."
+            exit 0
+          fi
+
+          TEMPLATE_URL="https://${TEMPLATE_BUCKET}.s3.${TARGET_REGION}.amazonaws.com/${SOLUTION_NAME}/${CMF_VERSION}/aws-cloud-migration-factory-solution-target-account.template"
+
+          normalize_bool() {
+            local val="${1:-}"
+            val="$(printf '%s' "${val}" | tr '[:upper:]' '[:lower:]')"
+            case "${val}" in
+              true|1|yes|y|on) echo "true" ;;
+              *) echo "false" ;;
+            esac
+          }
+
+          to_tag_cli() {
+            local json="$1"
+            if [[ -z "${json}" || "${json}" == "null" ]]; then
+              printf ''
+              return 0
+            fi
+            jq -r 'to_entries | map("\(.key)=\(.value|tostring)") | join(",")' <<< "${json}"
+          }
+
+          DEFAULT_REPLATFORM="$(normalize_bool "${TARGET_REPLATFORM}")"
+          DEFAULT_REHOST="$(normalize_bool "${TARGET_REHOST_MGN}")"
+
+          ORIG_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-}"
+          ORIG_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-}"
+          ORIG_SESSION_TOKEN="${AWS_SESSION_TOKEN:-}"
+          ORIG_SECURITY_TOKEN="${AWS_SECURITY_TOKEN:-}"
+
+          restore_credentials() {
+            if [[ -n "${ORIG_ACCESS_KEY_ID}" ]]; then export AWS_ACCESS_KEY_ID="${ORIG_ACCESS_KEY_ID}"; else unset AWS_ACCESS_KEY_ID || true; fi
+            if [[ -n "${ORIG_SECRET_ACCESS_KEY}" ]]; then export AWS_SECRET_ACCESS_KEY="${ORIG_SECRET_ACCESS_KEY}"; else unset AWS_SECRET_ACCESS_KEY || true; fi
+            if [[ -n "${ORIG_SESSION_TOKEN}" ]]; then export AWS_SESSION_TOKEN="${ORIG_SESSION_TOKEN}"; else unset AWS_SESSION_TOKEN || true; fi
+            if [[ -n "${ORIG_SECURITY_TOKEN}" ]]; then export AWS_SECURITY_TOKEN="${ORIG_SECURITY_TOKEN}"; else unset AWS_SECURITY_TOKEN || true; fi
+          }
+
+          trap 'restore_credentials' ERR INT TERM
+
+          assume_and_deploy() {
+            local config_json="$1"
+            local role_arn
+            role_arn=$(jq -r '.roleArn // empty' <<< "${config_json}")
+            if [[ -z "${role_arn}" ]]; then
+              echo "::error::Missing roleArn in target account configuration: ${config_json}"
+              return 1
+            fi
+
+            # CRITICAL FIX: Removed duplicate loop that was causing infinite recursion (lines 166-170)
+            # Correct loop exists after function definition at line 346
+
+            local session_name="CMFTarget-${GITHUB_RUN_ID:-manual}-$(date +%s)"
+            echo "::group::Deploying to target account via ${role_arn}"
+            local creds
+            creds=$(aws sts assume-role --role-arn "${role_arn}" --role-session-name "${session_name}" --duration-seconds 3600 2>&1) || {
+              echo "::error::Failed to assume role ${role_arn}"
+              echo "::error::${creds}"
+              return 1
+            }
+
+            local access_key secret_key session_token
+            access_key=$(jq -r '.Credentials.AccessKeyId' <<< "${creds}")
+            secret_key=$(jq -r '.Credentials.SecretAccessKey' <<< "${creds}")
+            session_token=$(jq -r '.Credentials.SessionToken' <<< "${creds}")
+
+            echo "::add-mask::${access_key}"
+            echo "::add-mask::${secret_key}"
+            echo "::add-mask::${session_token}"
+
+            export AWS_ACCESS_KEY_ID="${access_key}"
+            export AWS_SECRET_ACCESS_KEY="${secret_key}"
+            export AWS_SESSION_TOKEN="${session_token}"
+            export AWS_SECURITY_TOKEN="${session_token}"
+
+            local target_account_id
+            target_account_id=$(aws sts get-caller-identity --query Account --output text --region "${TARGET_REGION}")
+            echo "::notice title=Target Account::Deploying to ${target_account_id}"
+
+            local stack_name override_stack
+            override_stack=$(jq -r '.stackName // empty' <<< "${config_json}")
+            if [[ -n "${override_stack}" && "${override_stack}" != "null" ]]; then
+              stack_name="${override_stack}"
+            else
+              stack_name="${TARGET_STACK_NAME}"
+            fi
+
+            local replatform_value rehost_value
+            replatform_value=$(normalize_bool "$(jq -r '.replatform // empty' <<< "${config_json}")")
+            [[ -z "${replatform_value}" ]] && replatform_value="${DEFAULT_REPLATFORM}"
+            rehost_value=$(normalize_bool "$(jq -r '.rehostMGN // empty' <<< "${config_json}")")
+            [[ -z "${rehost_value}" ]] && rehost_value="${DEFAULT_REHOST}"
+
+            local staging_subnet
+            staging_subnet=$(jq -r '.stagingSubnetId // empty' <<< "${config_json}")
+            if [[ -z "${staging_subnet}" ]]; then
+              echo "::error::stagingSubnetId is required for ${role_arn}"
+              restore_credentials
+              return 1
+            fi
+
+            local security_groups=()
+            mapfile -t security_groups < <(jq -r '.securityGroupIds // [] | .[]' <<< "${config_json}")
+            if (( ${#security_groups[@]} == 0 )); then
+              echo "::error::securityGroupIds array is required for ${role_arn}"
+              restore_credentials
+              return 1
+            fi
+
+            local params=(
+              "FactoryAWSAccountId=${FACTORY_ACCOUNT_ID}"
+              "Replatform=${replatform_value}"
+              "RehostMGN=${rehost_value}"
+            )
+
+            if [[ "${rehost_value}" == "true" ]]; then
+              echo "Preparing AWS MGN service prerequisites..."
+              if init_output=$(aws mgn initialize-service --region "${TARGET_REGION}" 2>&1); then
+                echo "✓ MGN service initialized"
+              else
+                if grep -Eqi '(already initialized|ResourceAlreadyExistsException)' <<< "${init_output}"; then
+                  echo "✓ MGN service already initialized"
+                else
+                  echo "::error::Failed to initialize MGN: ${init_output}"
+                  restore_credentials
+                  return 1
+                fi
+              fi
+
+              echo "Checking replication configuration template..."
+              if ! aws mgn describe-replication-configuration-templates --region "${TARGET_REGION}" --query 'items' --output json | jq -e 'length > 0' >/dev/null 2>&1; then
+                local associate_default_sg create_public_ip data_plane_routing default_disk ebs_encryption ebs_key use_dedicated replication_instance bandwidth_throttling use_fips_endpoint
+                local staging_tags_json staging_tags_cli replication_tags_json replication_tags_cli
+
+                associate_default_sg=$(normalize_bool "$(jq -r '.associateDefaultSecurityGroup // "true"' <<< "${config_json}")")
+                create_public_ip=$(normalize_bool "$(jq -r '.createPublicIP // "false"' <<< "${config_json}")")
+                use_dedicated=$(normalize_bool "$(jq -r '.useDedicatedReplicationServer // "true"' <<< "${config_json}")")
+                use_fips_endpoint=$(normalize_bool "$(jq -r '.useFipsEndpoint // "false"' <<< "${config_json}")")
+                data_plane_routing=$(jq -r '.dataPlaneRouting // "PRIVATE_IP"' <<< "${config_json}")
+                default_disk=$(jq -r '.defaultLargeStagingDiskType // "GP2"' <<< "${config_json}")
+                ebs_encryption=$(jq -r '.ebsEncryption // "DEFAULT"' <<< "${config_json}")
+                ebs_key=$(jq -r '.ebsEncryptionKeyArn // empty' <<< "${config_json}")
+                replication_instance=$(jq -r '.replicationServerInstanceType // "t3.medium"' <<< "${config_json}")
+                bandwidth_throttling=$(jq -r '.bandwidthThrottling // 0' <<< "${config_json}")
+                staging_tags_json=$(jq -c '.stagingAreaTags // {"ManagedBy":"CMF-Pipeline"}' <<< "${config_json}")
+                replication_tags_json=$(jq -c '.replicationTemplateTags // {}' <<< "${config_json}")
+                staging_tags_cli=$(to_tag_cli "${staging_tags_json}")
+                replication_tags_cli=$(to_tag_cli "${replication_tags_json}")
+
+                REPL_ARGS=(aws mgn create-replication-configuration-template --region "${TARGET_REGION}")
+                [[ "${associate_default_sg}" == "true" ]] && REPL_ARGS+=(--associate-default-security-group) || REPL_ARGS+=(--no-associate-default-security-group)
+                REPL_ARGS+=(--bandwidth-throttling "${bandwidth_throttling}")
+                [[ "${create_public_ip}" == "true" ]] && REPL_ARGS+=(--create-public-ip) || REPL_ARGS+=(--no-create-public-ip)
+                REPL_ARGS+=(--data-plane-routing "${data_plane_routing}")
+                REPL_ARGS+=(--default-large-staging-disk-type "${default_disk}")
+                REPL_ARGS+=(--ebs-encryption "${ebs_encryption}")
+                [[ -n "${ebs_key}" && "${ebs_key}" != "null" && "${ebs_encryption}" == "CUSTOM" ]] && REPL_ARGS+=(--ebs-encryption-key-arn "${ebs_key}")
+                REPL_ARGS+=(--replication-server-instance-type "${replication_instance}")
+                REPL_ARGS+=(--replication-servers-security-groups-ids "${security_groups[@]}")
+                REPL_ARGS+=(--staging-area-subnet-id "${staging_subnet}")
+                [[ -n "${staging_tags_cli}" ]] && REPL_ARGS+=(--staging-area-tags "${staging_tags_cli}")
+                [[ -n "${replication_tags_cli}" ]] && REPL_ARGS+=(--tags "${replication_tags_cli}")
+                [[ "${use_dedicated}" == "true" ]] && REPL_ARGS+=(--use-dedicated-replication-server) || REPL_ARGS+=(--no-use-dedicated-replication-server)
+                [[ "${use_fips_endpoint}" == "true" ]] && REPL_ARGS+=(--use-fips-endpoint) || REPL_ARGS+=(--no-use-fips-endpoint)
+
+                "${REPL_ARGS[@]}"
+                echo "::notice title=MGN Replication Template::Created default replication template in ${target_account_id}"
+              else
+                echo "Replication configuration template already exists in ${target_account_id}"
+              fi
+
+              echo "Checking launch configuration template..."
+              if ! aws mgn describe-launch-configuration-templates --region "${TARGET_REGION}" --query 'items' --output json | jq -e 'length > 0' >/dev/null 2>&1; then
+                local associate_public_ip copy_private_ip copy_tags enable_map_auto_tagging right_sizing launch_disposition map_auto_tagging_mpe_id
+                local launch_tags_json launch_tags_cli
+
+                associate_public_ip=$(normalize_bool "$(jq -r '.associatePublicIpAddress // "false"' <<< "${config_json}")")
+                copy_private_ip=$(normalize_bool "$(jq -r '.copyPrivateIp // "true"' <<< "${config_json}")")
+                copy_tags=$(normalize_bool "$(jq -r '.copyTags // "true"' <<< "${config_json}")")
+                enable_map_auto_tagging=$(normalize_bool "$(jq -r '.enableMapAutoTagging // "true"' <<< "${config_json}")")
+                right_sizing=$(jq -r '.targetInstanceTypeRightSizingMethod // "NONE"' <<< "${config_json}")
+                launch_disposition=$(jq -r '.launchDisposition // "STOPPED"' <<< "${config_json}")
+                map_auto_tagging_mpe_id=$(jq -r '.mapAutoTaggingMpeId // empty' <<< "${config_json}")
+                launch_tags_json=$(jq -c '.launchTemplateTags // {}' <<< "${config_json}")
+                launch_tags_cli=$(to_tag_cli "${launch_tags_json}")
+
+                LAUNCH_ARGS=(aws mgn create-launch-configuration-template --region "${TARGET_REGION}")
+                [[ "${associate_public_ip}" == "true" ]] && LAUNCH_ARGS+=(--associate-public-ip-address) || LAUNCH_ARGS+=(--no-associate-public-ip-address)
+                [[ "${copy_private_ip}" == "true" ]] && LAUNCH_ARGS+=(--copy-private-ip) || LAUNCH_ARGS+=(--no-copy-private-ip)
+                [[ "${copy_tags}" == "true" ]] && LAUNCH_ARGS+=(--copy-tags) || LAUNCH_ARGS+=(--no-copy-tags)
+                [[ "${enable_map_auto_tagging}" == "true" ]] && LAUNCH_ARGS+=(--enable-map-auto-tagging) || LAUNCH_ARGS+=(--no-enable-map-auto-tagging)
+                LAUNCH_ARGS+=(--target-instance-type-right-sizing-method "${right_sizing}")
+                [[ -n "${launch_disposition}" && "${launch_disposition}" != "null" ]] && LAUNCH_ARGS+=(--launch-disposition "${launch_disposition}")
+                [[ -n "${map_auto_tagging_mpe_id}" && "${map_auto_tagging_mpe_id}" != "null" ]] && LAUNCH_ARGS+=(--map-auto-tagging-mpe-id "${map_auto_tagging_mpe_id}")
+                [[ -n "${launch_tags_cli}" ]] && LAUNCH_ARGS+=(--tags "${launch_tags_cli}")
+
+                "${LAUNCH_ARGS[@]}"
+                echo "::notice title=MGN Launch Template::Created default launch configuration template in ${target_account_id}"
+              else
+                echo "Launch configuration template already exists in ${target_account_id}"
+              fi
+            fi
+
+            local stack_exists=0
+            if aws cloudformation describe-stacks --stack-name "${stack_name}" --region "${TARGET_REGION}" >/dev/null 2>&1; then
+              stack_exists=1
+            fi
+
+            # MEDIUM FIX: Added service role for CloudFormation (best practice)
+            local cfn_service_role_arn="arn:aws:iam::${target_account_id}:role/CFN-ServiceRole-CMF-Target"
+            aws cloudformation deploy \
+              --region "${TARGET_REGION}" \
+              --stack-name "${stack_name}" \
+              --template-url "${TEMPLATE_URL}" \
+              --capabilities CAPABILITY_NAMED_IAM \
+              --role-arn "${cfn_service_role_arn}" \
+              --parameter-overrides "${params[@]}"
+
+            local waiter="stack-create-complete"
+            if (( stack_exists )); then
+              waiter="stack-update-complete"
+            fi
+            aws cloudformation wait "${waiter}" --stack-name "${stack_name}" --region "${TARGET_REGION}"
+
+            # MEDIUM FIX: Wait for IAM role propagation before MGN operations
+            echo "Waiting for IAM role propagation..."
+            sleep 10
+
+            echo "::notice title=Target Stack::${stack_name} deployed in account ${target_account_id}"
+            echo "::endgroup::"
+
+            restore_credentials
+          }
+
+          for config in "${CONFIGS[@]}"; do
+            assume_and_deploy "${config}" || echo "::warning::Failed to deploy to a target account; continuing"
+          done
+
+          restore_credentials

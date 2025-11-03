@@ -1,0 +1,82 @@
+name: Reusable CMF Deployment Summary
+
+on:
+  workflow_call:
+    inputs:
+      stack_name:
+        type: string
+        required: true
+      cmf_version:
+        type: string
+        required: true
+      solution_name:
+        type: string
+        required: true
+      environment:
+        type: string
+        required: true
+      region:
+        type: string
+        required: true
+      account_id:
+        type: string
+        required: true
+      template_bucket:
+        type: string
+        required: true
+      asset_bucket:
+        type: string
+        required: true
+      stack_tags_display:
+        type: string
+        required: false
+        default: ""
+      has_target_accounts:
+        type: string
+        required: false
+        default: "false"
+      stack_id:
+        type: string
+        required: false
+        default: ""
+
+jobs:
+  summary:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print deployment summary
+        shell: bash
+        env:
+          STACK_NAME: ${{ inputs.stack_name }}
+          CMF_VERSION: ${{ inputs.cmf_version }}
+          SOLUTION_NAME: ${{ inputs.solution_name }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          TARGET_REGION: ${{ inputs.region }}
+          ACCOUNT_ID: ${{ inputs.account_id }}
+          TEMPLATE_BUCKET: ${{ inputs.template_bucket }}
+          ASSET_BUCKET: ${{ inputs.asset_bucket }}
+          STACK_TAGS_DISPLAY: ${{ inputs.stack_tags_display }}
+          HAS_TARGET_ACCOUNTS: ${{ inputs.has_target_accounts }}
+          STACK_ID: ${{ inputs.stack_id }}
+        run: |
+          echo "::group::Deployment Summary"
+          echo "Stack Name:      ${STACK_NAME}"
+          echo "Stack ID:        ${STACK_ID:-n/a}"
+          echo "Region:          ${TARGET_REGION}"
+          echo "Account:         ${ACCOUNT_ID}"
+          echo "Environment:     ${ENVIRONMENT}"
+          echo "Solution:        ${SOLUTION_NAME}"
+          echo "CMF Version:     ${CMF_VERSION}"
+          echo ""
+          echo "Artifacts:"
+          echo "  Templates: s3://${TEMPLATE_BUCKET}/${SOLUTION_NAME}/${CMF_VERSION}/"
+          echo "  Assets:    s3://${ASSET_BUCKET}/${SOLUTION_NAME}/${CMF_VERSION}/"
+          if [[ -n "${STACK_TAGS_DISPLAY}" ]]; then
+            echo ""
+            echo "Tags: ${STACK_TAGS_DISPLAY}"
+          fi
+          if [[ "${HAS_TARGET_ACCOUNTS}" == "true" ]]; then
+            echo ""
+            echo "Target Accounts: bootstrap attempted (see logs for per-account status)"
+          fi
+          echo "::endgroup::"
