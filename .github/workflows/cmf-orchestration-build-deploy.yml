@@ -114,8 +114,8 @@ jobs:
       asset_bucket: ${{ needs.build.outputs.asset_bucket }}
       account_id: ${{ needs.build.outputs.account_id }}
       stack_tags_json: ${{ needs.build.outputs.stack_tags_json }}
-      use_changeset: ${{ inputs.environment == 'prod' || inputs.use_changeset_review == true ? 'true' : 'false' }}
-      enable_prod_stack_policy: ${{ inputs.environment == 'prod' && inputs.enable_prod_stack_policy == true ? 'true' : 'false' }}
+      use_changeset: "${{ inputs.environment == 'prod' || inputs.use_changeset_review == true ? 'true' : 'false' }}"
+      enable_prod_stack_policy: "${{ inputs.environment == 'prod' && inputs.enable_prod_stack_policy == true ? 'true' : 'false' }}"
       cfn_service_role_name: "CFN-ServiceRole-CMF"
       role_dev: "${{ vars.ACCOUNT_DEV != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_DEV) : '' }}"
       role_stage: "${{ vars.ACCOUNT_STAGE != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_STAGE) : '' }}"
@@ -134,8 +134,8 @@ jobs:
       template_bucket: ${{ needs.build.outputs.template_bucket }}
       account_id: ${{ needs.build.outputs.account_id }}
       target_stack_name: ${{ inputs.target_account_stack_name }}
-      target_replatform: ${{ inputs.target_replatform == true ? 'true' : 'false' }}
-      target_rehost_mgn: ${{ inputs.target_rehost_mgn == true ? 'true' : 'false' }}
+      target_replatform: "${{ inputs.target_replatform == true ? 'true' : 'false' }}"
+      target_rehost_mgn: "${{ inputs.target_rehost_mgn == true ? 'true' : 'false' }}"
       role_dev: "${{ vars.ACCOUNT_DEV != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_DEV) : '' }}"
       role_stage: "${{ vars.ACCOUNT_STAGE != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_STAGE) : '' }}"
       role_prod: "${{ vars.ACCOUNT_PROD != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_PROD) : '' }}"
