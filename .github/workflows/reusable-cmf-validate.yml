@@ -1,4 +1,4 @@
-name: Reusable CMF Validation
+name: CMF Workflow Validation
 
 on:
   workflow_call:

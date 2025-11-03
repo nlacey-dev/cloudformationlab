@@ -1,4 +1,4 @@
-name: Reusable CMF Target Account Init
+name: CMF Target Account Initialization
 
 on:
   workflow_call:

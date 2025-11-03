@@ -1,4 +1,4 @@
-name: Reusable CMF Deployment Summary
+name: CMF Deployment Summary
 
 on:
   workflow_call:

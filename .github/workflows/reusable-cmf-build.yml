@@ -1,4 +1,4 @@
-name: Reusable CMF Build & Stage
+name: CMF Build and Staging
 
 on:
   workflow_call:

@@ -1,4 +1,4 @@
-name: Reusable CMF Factory Deploy
+name: CMF Stack Deployment
 
 on:
   workflow_call:
