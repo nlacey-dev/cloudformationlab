@@ -76,7 +76,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest-4-cores
+    runs-on: ubuntu-latest
     outputs:
       account_id: ${{ steps.meta.outputs.account_id }}
       template_bucket: ${{ steps.meta.outputs.template_bucket }}
@@ -206,14 +206,23 @@ jobs:
             fi
           done
 
-      - name: Free disk space
+      - name: Free disk space and add swap
         run: |
           echo "Disk space before cleanup:"
           df -h
+          echo "Memory before optimization:"
+          free -h
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           sudo docker image prune --all --force
           echo "Disk space after cleanup:"
           df -h
+          echo "Creating 10GB swap file..."
+          sudo fallocate -l 10G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          echo "Memory after swap creation:"
+          free -h
 
       - name: Setup Node.js
         uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8
@@ -256,6 +265,7 @@ jobs:
           set -euo pipefail
           export CODEBUILD_BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
           export ENV="${ENVIRONMENT}"
+          export NODE_OPTIONS="--max-old-space-size=6144"
           BASE_BUCKET="cmf-deployment-${ACCOUNT_ID}-${ENVIRONMENT}"
           chmod +x deployment/build-s3-dist.sh
           ./deployment/build-s3-dist.sh "${BASE_BUCKET}" "${SOLUTION_NAME}" "${CMF_VERSION}"
