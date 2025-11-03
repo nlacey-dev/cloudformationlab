@@ -95,9 +95,9 @@ jobs:
       param_file: ${{ needs.validate.outputs.param_file }}
       cfn_lint_version: "1.14.3"
       node_version: "20"
-      role_dev: ${{ vars.ACCOUNT_DEV != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_DEV) : '' }}
-      role_stage: ${{ vars.ACCOUNT_STAGE != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_STAGE) : '' }}
-      role_prod: ${{ vars.ACCOUNT_PROD != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_PROD) : '' }}
+      role_dev: "${{ vars.ACCOUNT_DEV != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_DEV) : '' }}"
+      role_stage: "${{ vars.ACCOUNT_STAGE != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_STAGE) : '' }}"
+      role_prod: "${{ vars.ACCOUNT_PROD != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_PROD) : '' }}"
 
   deploy:
     needs: build
@@ -117,9 +117,9 @@ jobs:
       use_changeset: ${{ inputs.environment == 'prod' || inputs.use_changeset_review == true ? 'true' : 'false' }}
       enable_prod_stack_policy: ${{ inputs.environment == 'prod' && inputs.enable_prod_stack_policy == true ? 'true' : 'false' }}
       cfn_service_role_name: "CFN-ServiceRole-CMF"
-      role_dev: ${{ vars.ACCOUNT_DEV != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_DEV) : '' }}
-      role_stage: ${{ vars.ACCOUNT_STAGE != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_STAGE) : '' }}
-      role_prod: ${{ vars.ACCOUNT_PROD != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_PROD) : '' }}
+      role_dev: "${{ vars.ACCOUNT_DEV != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_DEV) : '' }}"
+      role_stage: "${{ vars.ACCOUNT_STAGE != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_STAGE) : '' }}"
+      role_prod: "${{ vars.ACCOUNT_PROD != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_PROD) : '' }}"
 
   target-bootstrap:
     needs: deploy
@@ -136,9 +136,9 @@ jobs:
       target_stack_name: ${{ inputs.target_account_stack_name }}
       target_replatform: ${{ inputs.target_replatform == true ? 'true' : 'false' }}
       target_rehost_mgn: ${{ inputs.target_rehost_mgn == true ? 'true' : 'false' }}
-      role_dev: ${{ vars.ACCOUNT_DEV != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_DEV) : '' }}
-      role_stage: ${{ vars.ACCOUNT_STAGE != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_STAGE) : '' }}
-      role_prod: ${{ vars.ACCOUNT_PROD != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_PROD) : '' }}
+      role_dev: "${{ vars.ACCOUNT_DEV != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_DEV) : '' }}"
+      role_stage: "${{ vars.ACCOUNT_STAGE != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_STAGE) : '' }}"
+      role_prod: "${{ vars.ACCOUNT_PROD != '' ? format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_PROD) : '' }}"
     secrets:
       target_account_configs: ${{ secrets.TARGET_ACCOUNT_CONFIGS }}
 

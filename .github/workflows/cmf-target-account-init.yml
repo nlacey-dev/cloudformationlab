@@ -48,7 +48,6 @@ on:
 
 jobs:
   target-bootstrap:
-    if: ${{ secrets.target_account_configs != '' }}
     runs-on: ubuntu-latest
     env:
       SOLUTION_NAME: ${{ inputs.solution_name }}
