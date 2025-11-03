@@ -44,20 +44,6 @@ on:
         required: false
         default: true
         type: boolean
-      target_account_stack_name:
-        description: "CloudFormation stack name to use in target accounts"
-        required: false
-        default: "cmf-target-account"
-      target_replatform:
-        description: "Enable Replatform (EC2) role deployment in target accounts"
-        required: false
-        default: true
-        type: boolean
-      target_rehost_mgn:
-        description: "Enable MGN automation role deployment in target accounts"
-        required: false
-        default: true
-        type: boolean
 
 permissions:
   id-token: write
@@ -131,9 +117,9 @@ jobs:
       environment: ${{ inputs.environment }}
       template_bucket: ${{ needs.build.outputs.template_bucket }}
       account_id: ${{ needs.build.outputs.account_id }}
-      target_stack_name: ${{ inputs.target_account_stack_name }}
-      target_replatform: ${{ inputs.target_replatform && 'true' || 'false' }}
-      target_rehost_mgn: ${{ inputs.target_rehost_mgn && 'true' || 'false' }}
+      target_stack_name: ${{ vars.TARGET_ACCOUNT_STACK_NAME || 'cmf-target-account' }}
+      target_replatform: ${{ vars.TARGET_REPLATFORM || 'true' }}
+      target_rehost_mgn: ${{ vars.TARGET_REHOST_MGN || 'true' }}
       role_dev: ${{ vars.ACCOUNT_DEV != '' && format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_DEV) || '' }}
       role_stage: ${{ vars.ACCOUNT_STAGE != '' && format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_STAGE) || '' }}
       role_prod: ${{ vars.ACCOUNT_PROD != '' && format('arn:aws:iam::{0}:role/GitHub-CMF-PipelineRole', vars.ACCOUNT_PROD) || '' }}
