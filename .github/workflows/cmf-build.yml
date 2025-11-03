@@ -148,7 +148,7 @@ jobs:
           echo "template_bucket=${TEMPLATE_BUCKET}" >> "$GITHUB_OUTPUT"
           echo "asset_bucket=${ASSET_BUCKET}" >> "$GITHUB_OUTPUT"
           echo "template_url=${TEMPLATE_URL}" >> "$GITHUB_OUTPUT"
-          {
+      {
             echo "ACCOUNT_ID=${ACCOUNT_ID}"
             echo "TEMPLATE_BUCKET=${TEMPLATE_BUCKET}"
             echo "ASSET_BUCKET=${ASSET_BUCKET}"
@@ -156,6 +156,43 @@ jobs:
           } >> "$GITHUB_ENV"
 
           echo "::notice title=Deployment Target::Account ${ACCOUNT_ID} | Region ${TARGET_REGION}"
+
+      - name: Ensure bootstrap S3 buckets
+        shell: bash
+        run: |
+          set -euo pipefail
+          ensure_stack() {
+            local stack_name="$1"
+            shift
+            local params=("$@")
+            local args=(
+              aws cloudformation deploy
+              --stack-name "${stack_name}"
+              --template-file deployment/CFN-templates/s3-deployment-buckets.template
+              --parameter-overrides "${params[@]}"
+              --region "${TARGET_REGION}"
+              --no-fail-on-empty-changeset
+            )
+            "${args[@]}"
+          }
+
+          missing=false
+          for bucket in "${TEMPLATE_BUCKET}" "${ASSET_BUCKET}"; do
+            if ! aws s3api head-bucket --bucket "${bucket}" >/dev/null 2>&1; then
+              missing=true
+              break
+            fi
+          done
+
+          if [[ "${missing}" == true ]]; then
+            STACK_NAME="CMF-BootstrapBuckets-${ENVIRONMENT}"
+            PARAMS=("Environment=${ENVIRONMENT}" "TargetRegion=${TARGET_REGION}")
+            if [[ -n "${KMS_KEY_ARN}" ]]; then
+              PARAMS+=("KmsKeyArn=${KMS_KEY_ARN}")
+            fi
+            echo "::notice title=S3 Bootstrap::Creating bootstrap buckets via CloudFormation stack ${STACK_NAME}"
+            ensure_stack "${STACK_NAME}" "${PARAMS[@]}"
+          fi
 
       - name: Verify bootstrap S3 buckets
         shell: bash
